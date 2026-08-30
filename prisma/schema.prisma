@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  username      String       @unique
+  passwordHash  String
+  jobRole       String
+  isOwner             Boolean      @default(false)
+  isActive            Boolean      @default(true)
+  faceEmbedding       String?      // JSON array of floats stored as text in SQLite
+  failedLoginAttempts Int          @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime     @default(now())
+  attendance    Attendance[]
+  leaves        Leave[]
+}
+
+model Attendance {
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  date               String    // YYYY-MM-DD (server timezone)
+  photoUrl           String?   // nullable — nulled after 30-day purge
+  matchConfidence    Float
+  takenAt            DateTime  @default(now())
+  checkOutAt         DateTime?
+  checkOutPhotoUrl   String?
+  checkOutConfidence Float?
+
+  @@unique([userId, date])
+}
+
+model Leave {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  jobRole   String
+  date      String   // YYYY-MM-DD
+  reason    String?
+  status    String   @default("pending") // "pending" | "approved" | "cancelled"
+  groupId   String?  // links multi-day leave records together
+  appliedAt DateTime @default(now())
+
+  // NOTE: The partial unique index enforcing the leave conflict rule is added
+  // via raw SQL in the migration:
+  //   CREATE UNIQUE INDEX role_date_active ON "Leave" ("jobRole","date")
+  //   WHERE status = 'approved';
+  // This prevents two same-role users from having approved leave on the same date.
+  @@index([jobRole, date])
+  @@index([groupId])
+}
