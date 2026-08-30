@@ -17,13 +17,20 @@ function getTodayString(): string {
   return `${year}-${month}-${day}`;
 }
 
-export async function recordAttendance(payload: { embedding: number[]; photo: string; localDate?: string }) {
+export async function recordAttendance(formData: FormData) {
   const session = await getSessionUser();
   if (!session) {
     return { error: "Unauthorized", status: 401 };
   }
 
-  const { embedding, photo, localDate } = payload;
+  const embedding = JSON.parse((formData.get("embedding") as string) || "[]");
+  const photoFile = formData.get("photo") as File | null;
+  if (!photoFile) {
+    return { error: "Photo is required", status: 400 };
+  }
+  const arrayBuffer = await photoFile.arrayBuffer();
+  const photo = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
+  const localDate = (formData.get("localDate") as string) || undefined;
 
   if (!Array.isArray(embedding) || embedding.length === 0) {
     return { error: "Invalid embedding", status: 400 };
@@ -88,13 +95,20 @@ export async function recordAttendance(payload: { embedding: number[]; photo: st
   };
 }
 
-export async function checkoutAttendance(payload: { embedding: number[]; photo: string; localDate?: string }) {
+export async function checkoutAttendance(formData: FormData) {
   const session = await getSessionUser();
   if (!session) {
     return { error: "Unauthorized", status: 401 };
   }
 
-  const { embedding, photo, localDate } = payload;
+  const embedding = JSON.parse((formData.get("embedding") as string) || "[]");
+  const photoFile = formData.get("photo") as File | null;
+  if (!photoFile) {
+    return { error: "Photo is required", status: 400 };
+  }
+  const arrayBuffer = await photoFile.arrayBuffer();
+  const photo = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
+  const localDate = (formData.get("localDate") as string) || undefined;
 
   if (!Array.isArray(embedding) || embedding.length === 0) {
     return { error: "Invalid embedding", status: 400 };

@@ -37,6 +37,7 @@ export default function EnrollmentCamera() {
   const embeddingsRef = useRef<number[][]>([]);
   const lastCaptureRef = useRef<number>(0);
   const statusRef = useRef<Status>("idle");
+  const unmountedRef = useRef(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("Initializing setup...");
@@ -129,6 +130,10 @@ export default function EnrollmentCamera() {
         video: { facingMode: "user", width: 640, height: 480 },
         audio: false,
       });
+      if (unmountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -145,9 +150,11 @@ export default function EnrollmentCamera() {
   }, [detectLoop, setStatusSynced]);
 
   useEffect(() => {
+    unmountedRef.current = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     startCamera();
     return () => {
+      unmountedRef.current = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (humanRef.current) {

@@ -46,6 +46,7 @@ type Status =
   | "success"
   | "error"
   | "already-done"
+  | "ready-to-checkout"
   | "checked-out";
 
 type Mode = "check-in" | "check-out";
@@ -63,12 +64,14 @@ export default function AttendanceCamera() {
   const animFrameRef = useRef<number>(0);
   const alreadyDoneRef = useRef(false);
   const framesSinceStartRef = useRef(0);
+  const unmountedRef = useRef(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [statusMessage, setStatusMessage] = useState("Initializing…");
   const [confidence, setConfidence] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [mode, setMode] = useState<Mode>("check-in");
+  const modeRef = useRef<Mode>("check-in");
   const [todayRecord, setTodayRecord] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -80,16 +83,19 @@ export default function AttendanceCamera() {
           if (data.record.checkOutAt) {
             alreadyDoneRef.current = true;
             setStatus("checked-out");
+            streamRef.current?.getTracks().forEach((t) => t.stop());
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             setStatusMessage(
               `Checked in at ${new Date(data.record.takenAt).toLocaleTimeString()} — Checked out at ${new Date(data.record.checkOutAt).toLocaleTimeString()}`
             );
           } else {
             alreadyDoneRef.current = true;
-            setStatus("already-done");
+            setStatus("ready-to-checkout");
+            streamRef.current?.getTracks().forEach((t) => t.stop());
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             setMode("check-out");
-            setStatusMessage(
-              `Checked in today at ${new Date(data.record.takenAt).toLocaleTimeString()}. Ready to check out.`
-            );
+            modeRef.current = "check-out";
+            setStatusMessage("Ready to check out. Click the button below to turn on the camera.");
           }
         }
       } catch (e) {
@@ -106,7 +112,7 @@ export default function AttendanceCamera() {
     if (!video || !canvas) return;
 
     setStatus("submitting");
-    setStatusMessage(mode === "check-in" ? "Verifying identity…" : "Verifying identity for check-out…");
+    setStatusMessage(modeRef.current === "check-in" ? "Verifying identity…" : "Verifying identity for check-out…");
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -118,20 +124,23 @@ export default function AttendanceCamera() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
 
     try {
-      const payload = { 
-        embedding, 
-        photo: photoDataUrl,
-        localDate: new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local time
-      };
+      const formData = new FormData();
+      formData.append("embedding", JSON.stringify(embedding));
+      
+      const res = await fetch(photoDataUrl);
+      const blob = await res.blob();
+      formData.append("photo", blob, "photo.jpg");
 
-      const action = mode === "check-in" ? recordAttendance : checkoutAttendance;
-      const data = await action(payload);
+      formData.append("localDate", new Date().toLocaleDateString('en-CA')); // YYYY-MM-DD local time
+
+      const action = modeRef.current === "check-in" ? recordAttendance : checkoutAttendance;
+      const data = await action(formData);
       
       if (data.ok) {
-        setStatus(mode === "check-in" ? "success" : "checked-out");
+        setStatus(modeRef.current === "check-in" ? "success" : "checked-out");
         setConfidence(data.confidence ?? null);
         setStatusMessage(
-          mode === "check-in"
+          modeRef.current === "check-in"
             ? "Attendance recorded successfully!"
             : `Checked out successfully!` // Note: data.checkOutAt could be used if available
         );
@@ -146,7 +155,7 @@ export default function AttendanceCamera() {
       setStatus("error");
       setErrorMessage("Network error. Please try again.");
     }
-  }, [mode]);
+  }, []);
 
   const runDetection = useCallback(async () => {
     const human = humanRef.current;
@@ -219,6 +228,10 @@ export default function AttendanceCamera() {
         video: { facingMode: "user", width: 640, height: 480 },
         audio: false,
       });
+      if (unmountedRef.current || alreadyDoneRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -236,9 +249,11 @@ export default function AttendanceCamera() {
   }, [detectLoop]);
 
   useEffect(() => {
+    unmountedRef.current = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     startCamera();
     return () => {
+      unmountedRef.current = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (humanRef.current) {
@@ -252,6 +267,7 @@ export default function AttendanceCamera() {
 
   const handleModeSwitch = (newMode: Mode) => {
     setMode(newMode);
+    modeRef.current = newMode;
     setStatus("idle");
     setErrorMessage("");
     setConfidence(null);
@@ -281,7 +297,7 @@ export default function AttendanceCamera() {
 
       <div className="flex-1 flex flex-col items-center p-4 md:p-6 w-full max-w-2xl mx-auto z-10 relative">
         {/* Mode Switcher */}
-        {todayRecord && !todayRecord.checkOutAt && status === "already-done" && (
+        {todayRecord && !todayRecord.checkOutAt && status !== "checked-out" && (
           <div className="w-full mb-4 flex gap-2">
             <button
               onClick={() => handleModeSwitch("check-in")}
@@ -357,6 +373,11 @@ export default function AttendanceCamera() {
                     <CheckIcon className="w-8 h-8" />
                   </div>
                 )}
+                {status === "ready-to-checkout" && (
+                  <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center">
+                    <InformationCircleIcon className="w-8 h-8" />
+                  </div>
+                )}
                 {status === "checked-out" && (
                   <div className="w-16 h-16 bg-scan-accent/10 text-scan-accent rounded-full flex items-center justify-center">
                     <CheckIcon className="w-8 h-8" />
@@ -404,6 +425,15 @@ export default function AttendanceCamera() {
                   onClick={() => handleModeSwitch("check-out")}
                 >
                   Check Out Instead
+                </button>
+              )}
+
+              {status === "ready-to-checkout" && (
+                <button
+                  className="mt-5 btn-primary text-sm px-6"
+                  onClick={() => handleModeSwitch("check-out")}
+                >
+                  Start Check Out
                 </button>
               )}
             </div>

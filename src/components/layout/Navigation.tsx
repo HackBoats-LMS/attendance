@@ -34,11 +34,16 @@ const adminItems = [
   { href: "/admin/leaves", label: "Leaves", icon: CalendarDaysIcon, iconSolid: CalendarDaysIconSolid },
 ];
 
-export default function Navigation({ initialUser }: { initialUser: { name: string; jobRole: string; isOwner: boolean } }) {
+export default function Navigation({ initialUser }: { initialUser: { name: string; jobRole: string; isOwner: boolean; hasFaceEmbedding?: boolean } }) {
   const pathname = usePathname();
   const user = initialUser;
-
-  const items = user?.isOwner ? adminItems : staffItems;
+  const items = user?.isOwner 
+    ? adminItems 
+    : staffItems.filter(item => {
+        if (item.href === "/enroll" && user?.hasFaceEmbedding) return false;
+        if (item.href === "/attendance" && !user?.hasFaceEmbedding) return false;
+        return true;
+      });
 
   return (
     <>

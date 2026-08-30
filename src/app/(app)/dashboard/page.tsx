@@ -77,7 +77,11 @@ export default async function DashboardPage() {
               </div>
             </div>
             <div>
-              {checkedIn && checkedOut ? (
+              {!user.hasFaceEmbedding ? (
+                <Link href="/enroll" className="btn-primary inline-block text-sm">
+                  Enroll Face First
+                </Link>
+              ) : checkedIn && checkedOut ? (
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary/10 text-primary font-semibold rounded-full text-sm">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
