@@ -854,7 +854,7 @@ Request -> proxy.ts (check cookie)
 | `src/features/attendance/actions.ts` | `recordAttendance`, `checkoutAttendance`, `getTodayAttendance` |
 | `src/features/enrollment/actions.ts` | `enrollUserFace` |
 | `src/features/leave/actions.ts` | `applyForLeave`, `getUserLeaves`, `checkLeaveConflicts`, `cancelLeaveSingle`, `cancelLeaveGroup` |
-| `src/features/admin/actions.ts` | `getAdminAttendance`, `getAdminLeaves`, `approveLeave`, `purgePhotosAdmin`, `getUsers`, `createUser`, `deactivateUser` |
+| `src/features/admin/actions.ts` | `getAdminAttendance`, `getAdminLeaves`, `approveLeave`, `approveLeaveGroup`, `purgePhotosAdmin`, `getUsers`, `createUser`, `deactivateUser` |
 
 ### Library Files
 
@@ -864,10 +864,10 @@ Request -> proxy.ts (check cookie)
 | `src/lib/prisma.ts` | Singleton Prisma client |
 | `src/lib/cosine.ts` | Cosine similarity for face matching |
 | `src/lib/cache.ts` | Client-side in-memory fetch deduplication |
-| `src/lib/ear.ts` | Eye Aspect Ratio utility (unused — blink detection removed) |
+| `src/lib/ear.ts` | Eye Aspect Ratio utility — computes blink pattern from face mesh points, used by AttendanceCamera for liveness verification |
 
 ### Total
 
 - **~2,800 lines of code** (excluding config and node_modules)
 - **8 pages**, **5 components**, **5 library files**, **5 Server Action files**, **1 middleware**
-- **No API route files** — all data operations use Next.js Server Actions
+- **1 API route file** (`/api/admin/purge-photos` — cron-secret authenticated), remaining data operations use Next.js Server Actions
