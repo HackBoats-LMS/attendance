@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { cosineSimilarity } from "@/lib/cosine";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 
 const FACE_MATCH_THRESHOLD = parseFloat(
   process.env.FACE_MATCH_THRESHOLD ?? "0.75"
@@ -163,14 +163,25 @@ export async function checkoutAttendance(payload: { embedding: number[]; photo: 
 }
 
 export async function getTodayAttendance() {
+  noStore(); // Always fetch fresh — never use cached version
   const session = await getSessionUser();
   if (!session) {
     return { error: "Unauthorized", status: 401 };
   }
-  
+
   const today = getTodayString();
   const existing = await prisma.attendance.findUnique({
     where: { userId_date: { userId: session.userId, date: today } },
+    // Exclude large base64 photo blobs — dashboard only needs timestamps
+    select: {
+      id: true,
+      date: true,
+      takenAt: true,
+      matchConfidence: true,
+      checkOutAt: true,
+      checkOutConfidence: true,
+      userId: true,
+    },
   });
 
   return { record: existing };

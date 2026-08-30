@@ -39,6 +39,9 @@ yarn-error.log*
 # face recognition models (copied from node_modules via postinstall)
 public/models/*.bin
 
+# attendance photos (stored in DB, never commit to git)
+public/uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -15,11 +15,6 @@ import { useRouter } from "next/navigation";
 import StatusChip from "@/components/ui/StatusChip";
 import { recordAttendance, checkoutAttendance, getTodayAttendance } from "../actions";
 
-const LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144];
-const RIGHT_EYE_INDICES = [263, 387, 385, 362, 380, 373];
-const EAR_BLINK_THRESHOLD = 0.18;
-const EAR_BLINK_CONSEC_FRAMES = 4;
-const EAR_WINDOW_SIZE = 15;
 const DETECTION_THROTTLE_MS = 100;
 
 const HUMAN_CONFIG: Partial<HumanConfig> = {
@@ -46,7 +41,7 @@ type Status =
   | "loading-model"
   | "camera-starting"
   | "detecting"
-  | "blinking"
+  | "capturing"
   | "submitting"
   | "success"
   | "error"
@@ -55,18 +50,7 @@ type Status =
 
 type Mode = "check-in" | "check-out";
 
-function dist(a: [number, number, number], b: [number, number, number]): number {
-  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
-}
 
-function computeEAR(mesh: [number, number, number][], indices: number[]): number {
-  const [p1, p2, p3, p4, p5, p6] = indices.map((i) => mesh[i]);
-  if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6) return 1;
-  const vertical = dist(p2, p6) + dist(p3, p5);
-  const horizontal = 2 * dist(p1, p4);
-  if (horizontal === 0) return 1;
-  return vertical / horizontal;
-}
 
 export default function AttendanceCamera() {
   const router = useRouter();
@@ -74,8 +58,6 @@ export default function AttendanceCamera() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const humanRef = useRef<Human | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const earHistoryRef = useRef<number[]>([]);
-  const blinkCountRef = useRef(0);
   const belowThresholdFramesRef = useRef(0);
   const lastDetectionRef = useRef(0);
   const animFrameRef = useRef<number>(0);
@@ -135,8 +117,6 @@ export default function AttendanceCamera() {
 
     streamRef.current?.getTracks().forEach((t) => t.stop());
 
-    const endpoint = mode === "check-in" ? "/api/attendance" : "/api/attendance/checkout";
-
     try {
       const payload = { 
         embedding, 
@@ -188,7 +168,7 @@ export default function AttendanceCamera() {
 
     // Trigger capture after detecting a face for 15 consecutive frames
     if (belowThresholdFramesRef.current === 15) {
-      setStatus("blinking"); // Reusing UI state for capturing
+      setStatus("capturing");
       setStatusMessage("Face detected! Capturing…");
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       await captureAndSubmit(face.embedding as number[]);
@@ -245,7 +225,7 @@ export default function AttendanceCamera() {
         await videoRef.current.play().catch(() => {});
       }
       setStatus("detecting");
-      setStatusMessage("Look at the camera and blink naturally…");
+      setStatusMessage("Look at the camera and hold still…");
       framesSinceStartRef.current = 0;
       detectLoop();
     } catch (err) {
@@ -268,7 +248,7 @@ export default function AttendanceCamera() {
     };
   }, [startCamera]);
 
-  const isActive = ["detecting", "blinking", "submitting"].includes(status);
+  const isActive = ["detecting", "capturing", "submitting"].includes(status);
 
   const handleModeSwitch = (newMode: Mode) => {
     setMode(newMode);
@@ -276,8 +256,6 @@ export default function AttendanceCamera() {
     setErrorMessage("");
     setConfidence(null);
     alreadyDoneRef.current = false;
-    earHistoryRef.current = [];
-    blinkCountRef.current = 0;
     belowThresholdFramesRef.current = 0;
     framesSinceStartRef.current = 0;
     startCamera();
@@ -338,7 +316,7 @@ export default function AttendanceCamera() {
               className={`absolute inset-0 transition-all duration-500 pointer-events-none ${
                 isActive
                   ? "bg-scan-accent/10"
-                  : status === "blinking"
+                  : status === "capturing"
                   ? "bg-primary/10"
                   : "bg-ink/5"
               }`}
@@ -365,7 +343,7 @@ export default function AttendanceCamera() {
             {/* Status overlay on camera */}
             <div
               className={`absolute inset-0 flex flex-col items-center justify-center p-6 z-10 transition-all duration-500 ${
-                isActive || status === "blinking"
+                isActive || status === "capturing"
                   ? "pointer-events-none"
                   : "bg-surface/80 backdrop-blur-sm"
               }`}
@@ -391,7 +369,7 @@ export default function AttendanceCamera() {
                 )}
               </div>
 
-              {!["detecting", "blinking"].includes(status) && (
+              {!["detecting", "capturing"].includes(status) && (
                 <p className="text-sm font-medium text-ink text-center">{statusMessage}</p>
               )}
 
@@ -411,8 +389,6 @@ export default function AttendanceCamera() {
                   onClick={() => {
                     setStatus("idle");
                     setErrorMessage("");
-                    earHistoryRef.current = [];
-                    blinkCountRef.current = 0;
                     belowThresholdFramesRef.current = 0;
                     framesSinceStartRef.current = 0;
                     startCamera();
@@ -444,7 +420,7 @@ export default function AttendanceCamera() {
           <ol className="list-decimal list-inside text-sm text-ink-muted space-y-2 ml-1 marker:text-primary marker:font-semibold">
             <li>Camera opens automatically</li>
             <li>Look straight at the camera</li>
-            <li>Blink naturally once</li>
+            <li>Hold still for a moment</li>
             <li>{mode === "check-in" ? "Your attendance is recorded" : "Your check-out is recorded"}</li>
           </ol>
         </div>

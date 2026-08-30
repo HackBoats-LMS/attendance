@@ -2,8 +2,7 @@
 
 import { useEffect, useReducer, useCallback } from "react";
 import StatusChip, { getLeaveChipVariant } from "@/components/ui/StatusChip";
-import { getAdminLeaves, approveLeave } from "@/features/admin/actions";
-import { cancelLeaveGroup, cancelLeaveSingle } from "@/features/leave/actions";
+import { getAdminLeaves, approveLeave, cancelLeaveGroupAdmin, cancelLeaveSingleAdmin } from "@/features/admin/actions";
 
 type LeaveEntry = {
   id: string;
@@ -61,8 +60,8 @@ export default function AdminLeavesPage() {
     if (!confirm(msg)) return;
     try {
       const res = entry.type === "range" && entry.groupId
-        ? await cancelLeaveGroup(entry.groupId)
-        : await cancelLeaveSingle(entry.id);
+        ? await cancelLeaveGroupAdmin(entry.groupId)
+        : await cancelLeaveSingleAdmin(entry.id);
       if (res.ok) { fetchLeaves(); }
       else alert("Failed to cancel leave");
     } catch (e) { console.error(e); alert("Network error"); }
@@ -120,7 +119,7 @@ export default function AdminLeavesPage() {
                           <button onClick={() => handleApprove(leave)}
                             className="text-green-600 hover:text-green-700 text-sm font-medium transition-colors">Approve</button>
                         )}
-                        {leave.status !== "cancelled" && (
+                        {leave.status === "pending" && (
                           <button onClick={() => handleCancel(leave)}
                             className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors">Cancel</button>
                         )}

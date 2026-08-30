@@ -2,8 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, hashPassword } from "@/lib/auth";
-import { unlink } from "fs/promises";
-import path from "path";
 
 const RETENTION_DAYS = parseInt(process.env.PHOTO_RETENTION_DAYS ?? "30", 10);
 
@@ -48,12 +46,12 @@ export async function getAdminLeaves() {
     groups[key].push(leave);
   }
 
-  const result = Object.entries(groups).map(([key, group]) => {
+  const result = Object.entries(groups).map(([, group]) => {
     const sorted = group.sort((a, b) => a.date.localeCompare(b.date));
     const isMultiDay = sorted.length > 1 && sorted[0].groupId;
 
     return {
-      id: key,
+      id: sorted[0].id,           // actual primary key — needed by approveLeave
       type: isMultiDay ? "range" : "single",
       groupId: sorted[0].groupId ?? null,
       startDate: sorted[0].date,
@@ -255,5 +253,29 @@ export async function deactivateUser(id: string) {
 
   await prisma.user.update({ where: { id }, data: { isActive: false } });
 
+  return { ok: true };
+}
+
+export async function cancelLeaveGroupAdmin(groupId: string) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  // Admin cancel: no userId restriction — can cancel any user's pending leaves
+  await prisma.leave.updateMany({
+    where: { groupId, status: "pending" },
+    data: { status: "cancelled" },
+  });
+  return { ok: true };
+}
+
+export async function cancelLeaveSingleAdmin(id: string) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  // Admin cancel: no userId restriction — can cancel any user's pending leave
+  await prisma.leave.updateMany({
+    where: { id, status: "pending" },
+    data: { status: "cancelled" },
+  });
   return { ok: true };
 }

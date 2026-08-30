@@ -139,7 +139,7 @@ export default function AdminUsersPage() {
               <div><label className="form-label">Job Role</label>
                 <input required className="form-input" value={form.jobRole} onChange={e => setForm({...form, jobRole: e.target.value})} placeholder="e.g. Nurse" /></div>
               <div><label className="form-label">Initial Password</label>
-                <input required type="text" className="form-input" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="Temporary password" /></div>
+                <input required type="password" className="form-input" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="Temporary password" /></div>
               <div className="flex gap-3 justify-end mt-4">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-bg transition-colors">Cancel</button>
                 <button type="submit" disabled={formLoading} className="btn-primary">{formLoading ? "Creating..." : "Create Account"}</button>

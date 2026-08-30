@@ -150,6 +150,10 @@ export default function EnrollmentCamera() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (humanRef.current) {
+        try { (humanRef.current as unknown as { dispose?: () => void }).dispose?.(); } catch {}
+        humanRef.current = null;
+      }
     };
   }, [startCamera]);
 

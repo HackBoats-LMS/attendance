@@ -200,7 +200,7 @@ export default function LeavePage() {
                   className="form-input min-h-[100px] resize-none" placeholder="Enter reason for leave..." disabled={state.loading} />
               </div>
 
-              <button type="submit" disabled={state.loading || !!(state.availability && !state.availability.available)}
+              <button type="submit" disabled={state.loading || state.checking || (!!state.startDate && !state.availability) || !!(state.availability && !state.availability.available)}
                 className="btn-primary mt-2 flex items-center justify-center h-10">
                 {state.loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Submit Application"}
               </button>
@@ -229,9 +229,9 @@ export default function LeavePage() {
                   </div>
                   <div className="flex items-center gap-4 justify-between sm:justify-end shrink-0">
                     <StatusChip label={entry.status === "cancelled" ? "Cancelled" : entry.status === "pending" ? "Pending" : "Approved"} variant={getLeaveChipVariant(entry.status)} />
-                    {entry.status !== "cancelled" && (
+                    {entry.status === "pending" && (
                       <button
-                        onClick={() => entry.type === "single" ? handleCancelSingle(entry.id) : handleCancelGroup(entry.groupId)}
+                        onClick={() => entry.type === "single" ? handleCancelSingle(entry.id) : handleCancelGroup(entry.groupId!)}
                         className="text-red-600 hover:text-red-500 text-sm font-medium transition-colors p-1"
                         title="Cancel Leave">Cancel</button>
                     )}

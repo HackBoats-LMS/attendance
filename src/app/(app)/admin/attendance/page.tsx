@@ -28,7 +28,7 @@ function reducer(state: State, action: Action): State {
 
 export default function AdminAttendancePage() {
   const [state, dispatch] = useReducer(reducer, {
-    date: new Date().toISOString().split("T")[0],
+    date: new Date().toLocaleDateString("en-CA"),
     records: [],
     loading: true,
   });

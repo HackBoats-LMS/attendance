@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, signToken, getSessionUser } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { unstable_noStore as noStore } from "next/cache";
 
 const COOKIE_NAME = "auth_token";
 
@@ -89,6 +90,7 @@ export async function logoutUser() {
 }
 
 export async function getMe() {
+  noStore();
   const session = await getSessionUser();
   if (!session) return { error: "Unauthorized", status: 401 };
 

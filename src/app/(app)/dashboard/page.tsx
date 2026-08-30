@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   const cancelledCount = leaves.filter((l: any) => l.status === "cancelled").length;
 
   const recentLeaves = [...leaves]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime())
     .slice(0, 6);
 
   const now = new Date();
@@ -132,9 +132,10 @@ export default async function DashboardPage() {
                   />
                 </div>
                 <p className="text-sm font-bold text-ink pr-20 mb-1">
-                  {new Date(leave.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {" – "}
-                  {new Date(leave.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {leave.type === "single"
+                    ? new Date(leave.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                    : `${new Date(leave.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(leave.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                  }
                 </p>
                 <p className="text-xs text-ink-muted line-clamp-1">{leave.reason}</p>
               </div>

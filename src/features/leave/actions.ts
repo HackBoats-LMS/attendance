@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { randomUUID } from "crypto";
+import { unstable_noStore as noStore } from "next/cache";
 
 function datesInRange(start: string, end: string): string[] {
   const dates: string[] = [];
@@ -90,6 +91,7 @@ export async function applyForLeave(payload: { startDate: string; endDate: strin
 }
 
 export async function getUserLeaves() {
+  noStore();
   const session = await getSessionUser();
   if (!session) return { error: "Unauthorized", status: 401 };
 
@@ -108,11 +110,12 @@ export async function getUserLeaves() {
 
   // Build grouped response
   const result = Object.values(grouped).map((group) => {
-    if (group.length === 1 && !group[0].groupId) {
-      // Single-day leave
+    if (group.length === 1) {
+      // Single-day leave (groupId may still be set — applyForLeave always sets it)
       return {
         type: "single" as const,
         id: group[0].id,
+        groupId: group[0].groupId,
         date: group[0].date,
         reason: group[0].reason,
         status: group[0].status,
