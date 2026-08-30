@@ -74,37 +74,7 @@ export default function AttendanceCamera() {
   const modeRef = useRef<Mode>("check-in");
   const [todayRecord, setTodayRecord] = useState<Record<string, unknown> | null>(null);
 
-  useEffect(() => {
-    const fetchAttendance = async () => {
-      try {
-        const data = await getTodayAttendance();
-        if (data.record) {
-          setTodayRecord(data.record);
-          if (data.record.checkOutAt) {
-            alreadyDoneRef.current = true;
-            setStatus("checked-out");
-            streamRef.current?.getTracks().forEach((t) => t.stop());
-            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            setStatusMessage(
-              `Checked in at ${new Date(data.record.takenAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })} — Checked out at ${new Date(data.record.checkOutAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })}`
-            );
-          } else {
-            alreadyDoneRef.current = true;
-            setStatus("ready-to-checkout");
-            streamRef.current?.getTracks().forEach((t) => t.stop());
-            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            setMode("check-out");
-            modeRef.current = "check-out";
-            setStatusMessage("Ready to check out. Click the button below to turn on the camera.");
-          }
-        }
-      } catch (e) {
-        // Ignore error
-      }
-    };
-    
-    fetchAttendance();
-  }, []);
+
 
   const captureAndSubmit = useCallback(async (embedding: number[]) => {
     const video = videoRef.current;
@@ -250,8 +220,36 @@ export default function AttendanceCamera() {
 
   useEffect(() => {
     unmountedRef.current = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    startCamera();
+    
+    const init = async () => {
+      try {
+        const data = await getTodayAttendance();
+        if (unmountedRef.current) return;
+        
+        if (data.record) {
+          setTodayRecord(data.record);
+          if (data.record.checkOutAt) {
+            alreadyDoneRef.current = true;
+            setStatus("checked-out");
+            setStatusMessage(
+              `Checked in at ${new Date(data.record.takenAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })} — Checked out at ${new Date(data.record.checkOutAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })}`
+            );
+          } else {
+            alreadyDoneRef.current = true;
+            setStatus("ready-to-checkout");
+            setMode("check-out");
+            modeRef.current = "check-out";
+            setStatusMessage("Ready to check out. Click the button below to turn on the camera.");
+          }
+        } else {
+          startCamera();
+        }
+      } catch (e) {
+        if (!unmountedRef.current) startCamera();
+      }
+    };
+    
+    init();
     return () => {
       unmountedRef.current = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
