@@ -484,9 +484,10 @@ idle -> loading-model -> camera-starting -> detecting -> submitting -> success |
 
 1. Calls `getAdminLeaves()` Server Action on mount
 2. Displays grouped leave entries: Date/Range, Staff Member, Role, Days, Reason, Status, Actions
-3. Admins can approve pending leaves via `approveLeave(id)` and cancel via `cancelLeaveGroup(groupId)`
+3. Admins can approve pending leaves: single-day via `approveLeave(id)`, multi-day ranges via `approveLeaveGroup(groupId)`
+4. Admins can cancel pending leaves: single-day via `cancelLeaveSingle(id)`, multi-day ranges via `cancelLeaveGroup(groupId)`
 
-**Server Actions called:** `getAdminLeaves`, `approveLeave`, `cancelLeaveGroup`
+**Server Actions called:** `getAdminLeaves`, `approveLeave`, `approveLeaveGroup`, `cancelLeaveGroup`
 
 ---
 
