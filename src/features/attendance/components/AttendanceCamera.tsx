@@ -86,7 +86,7 @@ export default function AttendanceCamera() {
             streamRef.current?.getTracks().forEach((t) => t.stop());
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
             setStatusMessage(
-              `Checked in at ${new Date(data.record.takenAt).toLocaleTimeString()} — Checked out at ${new Date(data.record.checkOutAt).toLocaleTimeString()}`
+              `Checked in at ${new Date(data.record.takenAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })} — Checked out at ${new Date(data.record.checkOutAt).toLocaleTimeString([], { timeZone: "Asia/Kolkata" })}`
             );
           } else {
             alreadyDoneRef.current = true;

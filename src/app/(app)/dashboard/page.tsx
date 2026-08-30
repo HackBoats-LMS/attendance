@@ -65,14 +65,14 @@ export default async function DashboardPage() {
               <div>
                 <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Clock In</p>
                 <p className="text-lg font-bold text-ink tabular-nums">
-                  {checkedIn ? new Date(attendance.takenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                  {checkedIn ? new Date(attendance.takenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—"}
                 </p>
               </div>
               <div className="w-px h-8 bg-surface-border" />
               <div>
                 <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Clock Out</p>
                 <p className="text-lg font-bold text-ink tabular-nums">
-                  {checkedOut && attendance?.checkOutAt ? new Date(attendance.checkOutAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                  {checkedOut && attendance?.checkOutAt ? new Date(attendance.checkOutAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—"}
                 </p>
               </div>
             </div>

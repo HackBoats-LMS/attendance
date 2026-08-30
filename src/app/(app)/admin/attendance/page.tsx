@@ -95,9 +95,9 @@ export default function AdminAttendancePage() {
                       <td className="px-3 md:px-6 py-3 md:py-4 hidden sm:table-cell">
                         <span className="bg-bg px-2 py-1 rounded text-xs">{r.user.jobRole}</span>
                       </td>
-                      <td className="px-3 md:px-6 py-3 md:py-4 text-ink-muted font-mono">{checkIn.toLocaleTimeString()}</td>
+                      <td className="px-3 md:px-6 py-3 md:py-4 text-ink-muted font-mono">{checkIn.toLocaleTimeString([], { timeZone: "Asia/Kolkata" })}</td>
                       <td className="px-3 md:px-6 py-3 md:py-4 text-ink-muted font-mono">
-                        {checkOut ? checkOut.toLocaleTimeString() : <span className="text-xs text-amber-600 font-medium">Active</span>}
+                        {checkOut ? checkOut.toLocaleTimeString([], { timeZone: "Asia/Kolkata" }) : <span className="text-xs text-amber-600 font-medium">Active</span>}
                       </td>
                       <td className="px-3 md:px-6 py-3 md:py-4 text-ink-muted font-mono hidden md:table-cell">
                         {durationHr !== null ? (
