@@ -533,7 +533,8 @@ This app uses **Next.js Server Actions** instead of traditional REST API routes.
 |----------|------|-------------|
 | `getAdminAttendance(date)` | Owner | Returns all attendance records for a given date, including user info. |
 | `getAdminLeaves()` | Owner | Returns all leaves across the organisation, grouped by leave period. |
-| `approveLeave(id)` | Owner | Approves a pending leave, checking for role conflicts first. |
+| `approveLeave(id)` | Owner | Approves a single-day pending leave, checking for role conflicts first. |
+| `approveLeaveGroup(groupId)` | Owner | Approves all pending leaves in a group atomically, re-checking role conflicts for every date in the range; rejects the entire group if any day conflicts. |
 | `cancelLeaveGroup(groupId)` | Owner | Cancels all leaves in a group. |
 | `purgePhotosAdmin()` | Owner | Nulls `photoUrl` and `checkOutPhotoUrl` on all attendance records older than `PHOTO_RETENTION_DAYS`. (Photos are in the DB — no disk deletion needed.) |
 | `getUsers()` | Owner | Returns all users with `hasFaceEmbedding` (never raw embedding). |
