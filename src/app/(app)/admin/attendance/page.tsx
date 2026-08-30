@@ -2,6 +2,32 @@
 
 import { useEffect, useReducer, useCallback } from "react";
 import { getAdminAttendance } from "@/features/admin/actions";
+import StatusChip from "@/components/ui/StatusChip";
+
+const SHIFT_START = "09:00"; // 9:00 AM
+const SHIFT_GRACE_MINUTES = 15;
+const SHIFT_END = "17:00"; // 5:00 PM
+
+function getShiftStatus(checkInAt: Date, checkOutAt: Date | null) {
+  const checkInStr = checkInAt.toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour12: false });
+  const checkInTime = checkInStr.slice(0, 5); // "HH:MM"
+  
+  const [sh, sm] = SHIFT_START.split(":").map(Number);
+  let limitM = sm + SHIFT_GRACE_MINUTES;
+  const limitH = sh + Math.floor(limitM / 60);
+  limitM = limitM % 60;
+  const limitStr = `${limitH.toString().padStart(2, '0')}:${limitM.toString().padStart(2, '0')}`;
+  
+  if (checkInTime > limitStr) return { status: "Late", variant: "red" as const };
+  
+  if (checkOutAt) {
+    const checkOutStr = checkOutAt.toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour12: false });
+    const checkOutTime = checkOutStr.slice(0, 5);
+    if (checkOutTime < SHIFT_END) return { status: "Early Leave", variant: "amber" as const };
+  }
+  
+  return { status: "On Time", variant: "green" as const };
+}
 
 type AttendanceRecord = {
   id: string;
@@ -48,6 +74,39 @@ export default function AdminAttendancePage() {
     dispatch({ type: "SET_DATE", date });
   }, []);
 
+  const handleExportCSV = useCallback(() => {
+    if (state.records.length === 0) return;
+    
+    const headers = ["Staff Member", "Role", "Check-In", "Check-Out", "Duration", "Status"];
+    const rows = state.records.map(r => {
+      const checkIn = new Date(r.takenAt);
+      const checkOut = r.checkOutAt ? new Date(r.checkOutAt) : null;
+      const checkInStr = checkIn.toLocaleTimeString([], { timeZone: "Asia/Kolkata" });
+      const checkOutStr = checkOut ? checkOut.toLocaleTimeString([], { timeZone: "Asia/Kolkata" }) : "Active";
+      
+      let durationStr = "—";
+      if (checkOut) {
+        const durationMs = checkOut.getTime() - checkIn.getTime();
+        const h = Math.floor(durationMs / 3600000);
+        const m = Math.floor((durationMs % 3600000) / 60000);
+        durationStr = `${h}h ${m}m`;
+      }
+      
+      const statusObj = getShiftStatus(checkIn, checkOut);
+      return [r.user.name, r.user.jobRole, checkInStr, checkOutStr, durationStr, statusObj.status].map(s => `"${s}"`).join(",");
+    });
+    
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `attendance_${state.date}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [state.records, state.date]);
+
   return (
     <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full z-10 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4">
@@ -58,6 +117,9 @@ export default function AdminAttendancePage() {
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-ink-muted">Select Date</label>
           <input type="date" value={state.date} onChange={(e) => handleDateChange(e.target.value)} className="form-input" />
+          <button onClick={handleExportCSV} disabled={state.records.length === 0 || state.loading} className="btn-primary py-2 px-4 text-sm whitespace-nowrap">
+            Export CSV
+          </button>
         </div>
       </div>
 
@@ -71,6 +133,7 @@ export default function AdminAttendancePage() {
                 <th className="px-3 md:px-6 py-3 md:py-4">Check-In</th>
                 <th className="px-3 md:px-6 py-3 md:py-4">Check-Out</th>
                 <th className="px-3 md:px-6 py-3 md:py-4 hidden md:table-cell">Duration</th>
+                <th className="px-3 md:px-6 py-3 md:py-4">Status</th>
                 <th className="px-3 md:px-6 py-3 md:py-4 hidden lg:table-cell">Match</th>
                 <th className="px-3 md:px-6 py-3 md:py-4 hidden lg:table-cell">Snapshot</th>
               </tr>
@@ -89,6 +152,7 @@ export default function AdminAttendancePage() {
                   const durationMs = checkOut ? checkOut.getTime() - checkIn.getTime() : null;
                   const durationHr = durationMs !== null ? Math.floor(durationMs / 3600000) : null;
                   const durationMin = durationMs !== null ? Math.floor((durationMs % 3600000) / 60000) : null;
+                  const shiftStatus = getShiftStatus(checkIn, checkOut);
                   return (
                     <tr key={r.id} className="border-b border-surface-border hover:bg-bg transition-colors">
                       <td className="px-3 md:px-6 py-3 md:py-4 font-medium text-ink">{r.user.name}</td>
@@ -103,6 +167,9 @@ export default function AdminAttendancePage() {
                         {durationHr !== null ? (
                           <span className="text-xs font-medium">{durationHr}h {durationMin}m</span>
                         ) : <span className="text-xs text-ink-muted/50">—</span>}
+                      </td>
+                      <td className="px-3 md:px-6 py-3 md:py-4">
+                        <StatusChip label={shiftStatus.status} variant={shiftStatus.variant} />
                       </td>
                       <td className="px-3 md:px-6 py-3 md:py-4 hidden lg:table-cell">
                         <span className={`font-semibold font-mono ${r.matchConfidence > 0.85 ? 'text-green-600' : 'text-amber-600'}`}>
