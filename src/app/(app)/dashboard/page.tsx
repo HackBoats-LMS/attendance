@@ -7,9 +7,11 @@ import { getTodayAttendance } from "@/features/attendance/actions";
 import { getUserLeaves } from "@/features/leave/actions";
 
 export default async function DashboardPage() {
-  const userRes = await getMe();
-  const attRes = await getTodayAttendance();
-  const leaveRes = await getUserLeaves();
+  const [userRes, attRes, leaveRes] = await Promise.all([
+    getMe(),
+    getTodayAttendance(),
+    getUserLeaves()
+  ]);
 
   if ("error" in userRes || !userRes.user) {
     redirect("/login");
