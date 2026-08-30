@@ -221,8 +221,6 @@ Authentication uses **JWT tokens** stored in **HttpOnly cookies** (`auth_token`)
 | `getSessionUser()` | Read cookie, verify token, return `{ userId, isOwner }` |
 | `setAuthCookie(response, token)` | Set HttpOnly cookie (adds `Secure` in production) |
 | `clearAuthCookie(response)` | Clear cookie (Max-Age=0) |
-| `withAuth(handler)` | HOF: wraps route handler, returns 401 if unauthenticated |
-| `withAdminAuth(handler)` | HOF: wraps route handler, returns 403 if not owner |
 
 **Startup guard:** If `JWT_SECRET` is missing or equals the placeholder value in production, the app throws an error at startup rather than silently running with a weak secret.
 
@@ -247,13 +245,6 @@ In Next.js 16, middleware is defined in `src/proxy.ts` and exports a `proxy` fun
 
 ```
 Request arrives
-  ├── Is it a public path? (/login, /api/login, /api/logout)
-  │   ├── YES, and user IS authenticated -> redirect to /dashboard
-  │   ├── YES, and user is NOT authenticated -> proceed
-  │   └── NO -> continue
-  ├── Is user authenticated? (check auth_token cookie)
-  │   ├── NO, and it's an API route -> return 401 JSON
-  │   ├── NO, and it's a page -> redirect to /login
   │   └── YES -> proceed
   └── Response goes to client
 ```
@@ -335,11 +326,11 @@ The URL `/dashboard` maps to `src/app/(app)/dashboard/page.tsx`. The `(app)` seg
 **Flow:**
 
 1. User enters credentials
-2. `POST /api/login` with `{ username, password }`
+2. `loginUser({ username, password })` Server Action is called
 3. On success: `router.push("/dashboard")`
 4. On failure: displays error message
 
-**API calls:** `POST /api/login`
+**Server Action called:** `loginUser`
 
 ### 8.2 Dashboard (/dashboard)
 
@@ -696,30 +687,32 @@ Built on Tailwind CSS v4 with custom component classes:
 
 **CSS Variables:**
 
-- `--background: #0f111a` (very dark blue-black)
-- `--foreground: #f8fafc` (near-white)
-- `--primary: #6366f1` (indigo-500)
-- `--surface: #1e1e2e` (dark surface)
-- `--border: #334155` (slate-700)
+- `--background: #F4F5F3` (off-white)
+- `--foreground: #111318` (ink)
+- `--primary: #15803D` (green-700)
+- `--surface: #FFFFFF` (white cards)
+- `--border: #D9DBD6` (light gray border)
+- `--scan-accent: #B8941F` (amber for camera UI)
 
 **Custom Component Classes:**
 
 | Class | Description |
 |-------|-------------|
-| `.btn-primary` | Indigo button with glow shadow effect, hover states |
-| `.glass-card` | Glassmorphism card: semi-transparent white background, backdrop blur, subtle border, rounded corners |
-| `.form-input` | Dark-themed form input with focus ring |
+| `.btn-primary` | Solid green button with subtle shadow, hover scaling |
+| `.card` | Clean white surface: rounded corners, soft shadow, light border |
+| `.form-input` | Light-themed form input with transition effects |
 | `.form-label` | Form label styling |
 
 ### Design Theme
 
-The app uses a dark theme with glassmorphism effects:
+The app uses a light, clean theme optimized for clinical/professional environments:
 
-- Background: Very dark blue-black (`#0f111a`)
-- Cards: Semi-transparent with backdrop blur
-- Accents: Indigo (`#6366f1`) for primary actions, cyan for secondary decorative elements
-- Text: Light slate colors on dark backgrounds
-- Decorative: Blurred gradient circles (indigo and cyan) in the background
+- Background: Soft off-white (`#F4F5F3`)
+- Cards: Solid white (`#FFFFFF`) to pop against the background
+- Accents: Green (`#15803D`) for primary actions (punching, submitting)
+- Camera UI: Amber-tinted overlays (`#B8941F`) and targeting reticles
+- Navigation: Floating pill-shaped bottom nav for mobile ergonomics
+- Components: `StatCard` and `StatusChip` use minimalist "punch stamp" styling rather than heavy gradients
 
 ---
 

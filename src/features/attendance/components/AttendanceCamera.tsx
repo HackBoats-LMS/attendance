@@ -14,8 +14,11 @@ import {
 import { useRouter } from "next/navigation";
 import StatusChip from "@/components/ui/StatusChip";
 import { recordAttendance, checkoutAttendance, getTodayAttendance } from "../actions";
+import { computeEAR } from "@/lib/ear";
 
 const DETECTION_THROTTLE_MS = 100;
+const LEFT_EYE = [33, 160, 158, 133, 153, 144];
+const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
 
 const HUMAN_CONFIG: Partial<HumanConfig> = {
   modelBasePath: "/models",
@@ -59,12 +62,14 @@ export default function AttendanceCamera() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const humanRef = useRef<Human | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const belowThresholdFramesRef = useRef(0);
-  const lastDetectionRef = useRef(0);
-  const animFrameRef = useRef<number>(0);
-  const alreadyDoneRef = useRef(false);
-  const framesSinceStartRef = useRef(0);
-  const unmountedRef = useRef(false);
+  const animFrameRef = useRef<number | null>(null);
+  const lastDetectionRef = useRef<number>(0);
+  const framesSinceStartRef = useRef<number>(0);
+  const belowThresholdFramesRef = useRef<number>(0);
+  const earHistoryRef = useRef<number[]>([]);
+  const hasBlinkedRef = useRef<boolean>(false);
+  const unmountedRef = useRef<boolean>(false);
+  const alreadyDoneRef = useRef<boolean>(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [statusMessage, setStatusMessage] = useState("Initializing…");
@@ -138,19 +143,48 @@ export default function AttendanceCamera() {
     const result = await human.detect(video);
     const face = result.face?.[0];
     
-    if (!face || !face.embedding) {
+    if (!face || !face.embedding || !face.mesh) {
       belowThresholdFramesRef.current = 0; // Reset face frame counter if no face
       return;
     }
 
-    belowThresholdFramesRef.current++; // Re-using this ref to count valid face frames
+    // Calculate EAR
+    const leftEAR = computeEAR(face.mesh as [number, number, number][], LEFT_EYE);
+    const rightEAR = computeEAR(face.mesh as [number, number, number][], RIGHT_EYE);
+    const avgEAR = (leftEAR + rightEAR) / 2;
 
-    // Trigger capture after detecting a face for 15 consecutive frames
-    if (belowThresholdFramesRef.current === 15) {
+    earHistoryRef.current.push(avgEAR);
+    if (earHistoryRef.current.length > 20) {
+      earHistoryRef.current.shift();
+    }
+
+    // Blink detection: Look for open (>=0.28) -> closed (<=0.25) -> open (>=0.28)
+    if (!hasBlinkedRef.current && earHistoryRef.current.length >= 10) {
+      const history = earHistoryRef.current;
+      let state = 0;
+      for (const ear of history) {
+        if (state === 0 && ear >= 0.28) state = 1; // baseline open
+        else if (state === 1 && ear <= 0.25) state = 2; // dip
+        else if (state === 2 && ear >= 0.28) {
+          state = 3; // return to open
+          break;
+        }
+      }
+      if (state === 3) {
+        hasBlinkedRef.current = true;
+      }
+    }
+
+    belowThresholdFramesRef.current++;
+
+    // Require BOTH 15 stable frames AND a genuine blink
+    if (belowThresholdFramesRef.current >= 15 && hasBlinkedRef.current) {
       setStatus("capturing");
-      setStatusMessage("Face detected! Capturing…");
+      setStatusMessage("Face and blink detected! Capturing…");
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       await captureAndSubmit(face.embedding as number[]);
+    } else if (belowThresholdFramesRef.current >= 15 && !hasBlinkedRef.current) {
+      setStatusMessage("Please blink to verify liveness…");
     }
   }, [captureAndSubmit]);
 

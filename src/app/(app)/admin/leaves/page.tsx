@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useCallback } from "react";
 import StatusChip, { getLeaveChipVariant } from "@/components/ui/StatusChip";
-import { getAdminLeaves, approveLeave, cancelLeaveGroupAdmin, cancelLeaveSingleAdmin } from "@/features/admin/actions";
+import { getAdminLeaves, approveLeave, approveLeaveGroup, cancelLeaveGroupAdmin, cancelLeaveSingleAdmin } from "@/features/admin/actions";
 
 type LeaveEntry = {
   id: string;
@@ -15,15 +15,24 @@ type LeaveEntry = {
   status: string;
   appliedAt: Date;
   user: { id: string; name: string; username: string; jobRole: string };
+  hasConflict?: boolean;
+  allDates: string[];
 };
 
-type State = { leaves: LeaveEntry[]; loading: boolean };
-type Action = { type: "LOADED"; leaves: LeaveEntry[] } | { type: "DONE" };
+type State = {
+  leaves: LeaveEntry[];
+  loading: boolean;
+};
+
+type Action = 
+  | { type: "LOADED"; leaves: LeaveEntry[] }
+  | { type: "DONE" };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "LOADED": return { leaves: action.leaves, loading: false };
+    case "LOADED": return { ...state, leaves: action.leaves, loading: false };
     case "DONE": return { ...state, loading: false };
+    default: return state;
   }
 }
 
@@ -47,7 +56,9 @@ export default function AdminLeavesPage() {
       : `Approve leave for ${entry.user.name} on ${entry.startDate}?`;
     if (!confirm(msg)) return;
     try {
-      const res = await approveLeave(entry.id);
+      const res = entry.type === "range" && entry.groupId
+        ? await approveLeaveGroup(entry.groupId)
+        : await approveLeave(entry.id);
       if (res.ok) { fetchLeaves(); }
       else { alert(res.error ?? "Failed to approve leave"); }
     } catch (e) { console.error(e); alert("Network error"); }
@@ -111,7 +122,14 @@ export default function AdminLeavesPage() {
                       {leave.reason || <span className="italic text-ink-muted/50">None provided</span>}
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 text-center">
-                      <StatusChip label={leave.status} variant={getLeaveChipVariant(leave.status)} />
+                      <div className="flex flex-col items-center gap-1.5">
+                        <StatusChip label={leave.status} variant={getLeaveChipVariant(leave.status)} />
+                        {leave.status === "pending" && leave.hasConflict && (
+                          <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium shadow-sm border border-red-200">
+                            Role Conflict
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 md:px-6 py-3 md:py-4 text-right">
                       <div className="flex items-center justify-end gap-3">

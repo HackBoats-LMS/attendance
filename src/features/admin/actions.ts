@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, hashPassword } from "@/lib/auth";
+import { executePhotoPurge } from "@/lib/purge";
 
 const RETENTION_DAYS = parseInt(process.env.PHOTO_RETENTION_DAYS ?? "30", 10);
 
@@ -51,7 +52,7 @@ export async function getAdminLeaves() {
     const isMultiDay = sorted.length > 1 && sorted[0].groupId;
 
     return {
-      id: sorted[0].id,           // actual primary key — needed by approveLeave
+      id: sorted[0].id,
       type: isMultiDay ? "range" : "single",
       groupId: sorted[0].groupId ?? null,
       startDate: sorted[0].date,
@@ -61,8 +62,24 @@ export async function getAdminLeaves() {
       status: sorted[0].status,
       appliedAt: sorted[0].appliedAt,
       user: sorted[0].user,
+      hasConflict: false, // will populate next
+      allDates: sorted.map(l => l.date),
     };
   });
+
+  // Calculate conflicts for pending leaves
+  for (const item of result) {
+    if (item.status === "pending") {
+      const conflict = result.find(other => 
+        other.id !== item.id && 
+        other.user.jobRole === item.user.jobRole &&
+        other.user.id !== item.user.id &&
+        other.status !== "cancelled" &&
+        item.allDates.some(d => other.allDates.includes(d))
+      );
+      item.hasConflict = !!conflict;
+    }
+  }
 
   return { leaves: result };
 }
@@ -88,57 +105,6 @@ export async function approveLeave(id: string) {
     return { error: `Another staff member already has approved leave on ${leave.date}`, status: 409 };
   }
 
-  if (leave.groupId) {
-    const groupLeaves = await prisma.leave.findMany({
-      where: { groupId: leave.groupId, status: "pending" },
-    });
-
-    const dates = groupLeaves.map((l) => l.date);
-    const conflicts = await prisma.leave.findMany({
-      where: {
-        jobRole: leave.jobRole,
-        date: { in: dates },
-        status: "approved",
-        NOT: { userId: leave.userId },
-      },
-    });
-
-    if (conflicts.length > 0) {
-      const conflictDates = [...new Set(conflicts.map((l) => l.date))].join(", ");
-      return { error: `Conflicts on: ${conflictDates}`, status: 409 };
-    }
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        const checkConflicts = await tx.leave.findMany({
-          where: {
-            jobRole: leave.jobRole,
-            date: { in: dates },
-            status: "approved",
-            NOT: { userId: leave.userId },
-          },
-        });
-        
-        if (checkConflicts.length > 0) throw new Error("Conflict");
-
-        await tx.leave.updateMany({
-          where: { groupId: leave.groupId, status: "pending" },
-          data: { status: "approved" },
-        });
-      });
-    } catch (error: unknown) {
-      if (
-        (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2002") ||
-        (error instanceof Error && error.message === "Conflict")
-      ) {
-        return { error: "Another staff member already has approved leave on one or more of these dates.", status: 409 };
-      }
-      throw error;
-    }
-
-    return { ok: true, approved: groupLeaves.length };
-  }
-
   await prisma.leave.update({
     where: { id },
     data: { status: "approved" },
@@ -147,36 +113,72 @@ export async function approveLeave(id: string) {
   return { ok: true, approved: 1 };
 }
 
+export async function approveLeaveGroup(groupId: string) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  const groupLeaves = await prisma.leave.findMany({
+    where: { groupId, status: "pending" },
+  });
+
+  if (groupLeaves.length === 0) {
+    return { error: "No pending leaves found in this group", status: 404 };
+  }
+
+  const jobRole = groupLeaves[0].jobRole;
+  const userId = groupLeaves[0].userId;
+  const dates = groupLeaves.map((l) => l.date);
+
+  const conflicts = await prisma.leave.findMany({
+    where: {
+      jobRole,
+      date: { in: dates },
+      status: "approved",
+      NOT: { userId },
+    },
+  });
+
+  if (conflicts.length > 0) {
+    const conflictDates = [...new Set(conflicts.map((l) => l.date))].join(", ");
+    return { error: `Conflicts on: ${conflictDates}`, status: 409 };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const checkConflicts = await tx.leave.findMany({
+        where: {
+          jobRole,
+          date: { in: dates },
+          status: "approved",
+          NOT: { userId },
+        },
+      });
+      
+      if (checkConflicts.length > 0) throw new Error("Conflict");
+
+      await tx.leave.updateMany({
+        where: { groupId, status: "pending" },
+        data: { status: "approved" },
+      });
+    });
+  } catch (error: unknown) {
+    if (
+      (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2002") ||
+      (error instanceof Error && error.message === "Conflict")
+    ) {
+      return { error: "Another staff member already has approved leave on one or more of these dates.", status: 409 };
+    }
+    throw error;
+  }
+
+  return { ok: true, approved: groupLeaves.length };
+}
+
 export async function purgePhotosAdmin() {
   const session = await getSessionUser();
   if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
 
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
-
-  const oldRecords = await prisma.attendance.findMany({
-    where: { 
-      takenAt: { lt: cutoff }, 
-      OR: [
-        { photoUrl: { not: null } },
-        { checkOutPhotoUrl: { not: null } }
-      ]
-    },
-    select: { id: true },
-  });
-
-  let deleted = 0;
-
-  for (const record of oldRecords) {
-    await prisma.attendance.update({
-      where: { id: record.id },
-      data: { 
-        photoUrl: null,
-        checkOutPhotoUrl: null
-      },
-    });
-    deleted++;
-  }
+  const { deleted, cutoff } = await executePhotoPurge(RETENTION_DAYS);
 
   return { ok: true, deleted, errors: 0, cutoff };
 }
