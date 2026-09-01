@@ -21,6 +21,8 @@ if (
   process.env.NODE_ENV === "production" &&
   !process.env.CRON_SECRET
 ) {
+  // Intentional startup warning — not debug logging.
+  // This alerts operators that the cron purge endpoint is unreachable.
   console.warn(
     "[AttendanceIQ] CRON_SECRET is not set. Scheduled maintenance endpoints (e.g. purge-photos) will not be reachable via cron until it is configured."
   );

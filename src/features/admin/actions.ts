@@ -281,3 +281,26 @@ export async function cancelLeaveSingleAdmin(id: string) {
   });
   return { ok: true };
 }
+
+export async function reactivateUser(id: string) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return { error: "User not found", status: 404 };
+  if (user.isActive) return { error: "User is already active", status: 400 };
+
+  await prisma.user.update({ where: { id }, data: { isActive: true } });
+  return { ok: true };
+}
+
+export async function resetUserFaceEmbedding(id: string) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return { error: "User not found", status: 404 };
+
+  await prisma.user.update({ where: { id }, data: { faceEmbedding: null } });
+  return { ok: true };
+}

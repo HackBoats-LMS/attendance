@@ -5,9 +5,7 @@ import type Human from "@vladmandic/human";
 import type { Config as HumanConfig } from "@vladmandic/human";
 import {
   ArrowLeftIcon,
-  EllipsisVerticalIcon,
   InformationCircleIcon,
-  ArrowPathIcon,
   CheckIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -54,7 +52,15 @@ type Status =
 
 type Mode = "check-in" | "check-out";
 
-
+type TodayRecord = {
+  id: string;
+  date: string;
+  takenAt: string | Date;
+  matchConfidence: number;
+  checkOutAt: string | Date | null;
+  checkOutConfidence: number | null;
+  userId: string;
+};
 
 export default function AttendanceCamera() {
   const router = useRouter();
@@ -77,7 +83,7 @@ export default function AttendanceCamera() {
   const [errorMessage, setErrorMessage] = useState("");
   const [mode, setMode] = useState<Mode>("check-in");
   const modeRef = useRef<Mode>("check-in");
-  const [todayRecord, setTodayRecord] = useState<Record<string, unknown> | null>(null);
+  const [todayRecord, setTodayRecord] = useState<TodayRecord | null>(null);
 
 
 
@@ -114,10 +120,14 @@ export default function AttendanceCamera() {
       if (data.ok) {
         setStatus(modeRef.current === "check-in" ? "success" : "checked-out");
         setConfidence(data.confidence ?? null);
+        const rawCheckOut = (data as { checkOutAt?: string }).checkOutAt;
+        const checkOutTime = rawCheckOut
+          ? new Date(rawCheckOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })
+          : null;
         setStatusMessage(
           modeRef.current === "check-in"
             ? "Attendance recorded successfully!"
-            : `Checked out successfully!` // Note: data.checkOutAt could be used if available
+            : checkOutTime ? `Checked out at ${checkOutTime}` : "Checked out successfully!"
         );
       } else if (data.status === 409) {
         setStatus("already-done");
@@ -201,7 +211,6 @@ export default function AttendanceCamera() {
           await runDetection();
         } catch (err: unknown) {
           if (err instanceof Error && (err.message.includes("Device") || err.message.includes("GPUBuffer"))) {
-            console.warn("GPU device lost, stopping detection");
             humanRef.current = null;
             streamRef.current?.getTracks().forEach((t) => t.stop());
             setStatus("error");
@@ -245,8 +254,7 @@ export default function AttendanceCamera() {
       setStatusMessage("Look at the camera and hold still…");
       framesSinceStartRef.current = 0;
       detectLoop();
-    } catch (err) {
-      console.error("Camera init error:", err);
+    } catch {
       setStatus("error");
       setErrorMessage("Could not access camera. Please grant camera permission and try again.");
     }
@@ -278,7 +286,8 @@ export default function AttendanceCamera() {
         } else {
           startCamera();
         }
-      } catch (e) {
+      } catch {
+        // getTodayAttendance failed (e.g. session expired) — proceed to camera anyway
         if (!unmountedRef.current) startCamera();
       }
     };
@@ -321,9 +330,7 @@ export default function AttendanceCamera() {
             <ArrowLeftIcon className="w-4 h-4 text-ink" />
           </button>
           <h1 className="text-base font-semibold text-ink">Attendance</h1>
-          <button className="w-9 h-9 flex items-center justify-center rounded-full bg-surface border border-surface-border shadow-sm hover:bg-surface/80 transition-colors">
-            <EllipsisVerticalIcon className="w-4 h-4 text-ink-muted" />
-          </button>
+          <div className="w-9 h-9" />
         </div>
       </header>
 

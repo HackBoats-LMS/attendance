@@ -72,8 +72,7 @@ export async function loginUser(payload: { username: string; password: string })
     });
 
     return { ok: true };
-  } catch (error) {
-    console.error("Login error:", error);
+  } catch {
     return { error: "Internal server error", status: 500 };
   }
 }

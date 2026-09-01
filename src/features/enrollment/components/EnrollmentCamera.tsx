@@ -106,7 +106,9 @@ export default function EnrollmentCamera() {
             if (statusRef.current !== "detecting") setStatusSynced("detecting");
             setMessage("Please face the camera clearly.");
           }
-        } catch {}
+        } catch {
+          // Ignore transient detection errors and keep looping
+        }
       }
       animFrameRef.current = requestAnimationFrame(loop);
     };
@@ -142,8 +144,7 @@ export default function EnrollmentCamera() {
       setStatusSynced("detecting");
       setMessage("Look directly at the camera...");
       detectLoop();
-    } catch (err) {
-      console.error(err);
+    } catch {
       setStatusSynced("error");
       setMessage("Camera access denied or unavailable.");
     }
@@ -151,7 +152,6 @@ export default function EnrollmentCamera() {
 
   useEffect(() => {
     unmountedRef.current = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     startCamera();
     return () => {
       unmountedRef.current = true;

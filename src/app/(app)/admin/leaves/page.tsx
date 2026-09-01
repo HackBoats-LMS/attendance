@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useCallback } from "react";
+import { useEffect, useReducer, useCallback, useState } from "react";
 import StatusChip, { getLeaveChipVariant } from "@/components/ui/StatusChip";
 import { getAdminLeaves, approveLeave, approveLeaveGroup, cancelLeaveGroupAdmin, cancelLeaveSingleAdmin } from "@/features/admin/actions";
 
@@ -38,14 +38,17 @@ function reducer(state: State, action: Action): State {
 
 export default function AdminLeavesPage() {
   const [state, dispatch] = useReducer(reducer, { leaves: [], loading: true });
+  const [actionError, setActionError] = useState("");
+  const [fetchError, setFetchError] = useState(false);
 
   const fetchLeaves = useCallback(() => {
+    setFetchError(false);
     getAdminLeaves()
       .then((d) => {
         if ("error" in d) throw new Error(d.error);
         dispatch({ type: "LOADED", leaves: d.leaves as LeaveEntry[] });
       })
-      .catch(() => dispatch({ type: "DONE" }));
+      .catch(() => { dispatch({ type: "DONE" }); setFetchError(true); });
   }, []);
 
   useEffect(() => { fetchLeaves(); }, [fetchLeaves]);
@@ -55,13 +58,14 @@ export default function AdminLeavesPage() {
       ? `Approve all ${entry.days} days of leave for ${entry.user.name}?`
       : `Approve leave for ${entry.user.name} on ${entry.startDate}?`;
     if (!confirm(msg)) return;
+    setActionError("");
     try {
       const res = entry.type === "range" && entry.groupId
         ? await approveLeaveGroup(entry.groupId)
         : await approveLeave(entry.id);
       if (res.ok) { fetchLeaves(); }
-      else { alert(res.error ?? "Failed to approve leave"); }
-    } catch (e) { console.error(e); alert("Network error"); }
+      else { setActionError(res.error ?? "Failed to approve leave"); }
+    } catch { setActionError("Network error. Please try again."); }
   }, [fetchLeaves]);
 
   const handleCancel = useCallback(async (entry: LeaveEntry) => {
@@ -69,13 +73,14 @@ export default function AdminLeavesPage() {
       ? `Cancel all ${entry.days} days of leave for ${entry.user.name}?`
       : `Cancel leave for ${entry.user.name} on ${entry.startDate}?`;
     if (!confirm(msg)) return;
+    setActionError("");
     try {
       const res = entry.type === "range" && entry.groupId
         ? await cancelLeaveGroupAdmin(entry.groupId)
         : await cancelLeaveSingleAdmin(entry.id);
       if (res.ok) { fetchLeaves(); }
-      else alert("Failed to cancel leave");
-    } catch (e) { console.error(e); alert("Network error"); }
+      else setActionError("Failed to cancel leave");
+    } catch { setActionError("Network error. Please try again."); }
   }, [fetchLeaves]);
 
   return (
@@ -84,6 +89,13 @@ export default function AdminLeavesPage() {
         <h1 className="text-2xl md:text-3xl font-heading font-bold text-ink tracking-tight">Leave Overview</h1>
         <p className="text-ink-muted mt-1">Review all staff leaves across the organization.</p>
       </div>
+
+      {actionError && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm flex items-center justify-between">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError("")} className="text-red-400 hover:text-red-600 ml-4 text-xs font-medium">Dismiss</button>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -102,6 +114,11 @@ export default function AdminLeavesPage() {
               {state.loading ? (
                 <tr><td colSpan={6} className="px-6 py-12 text-center">
                   <div className="inline-block w-8 h-8 border-2 border-surface-border border-t-primary rounded-full animate-spin" />
+                </td></tr>
+              ) : fetchError ? (
+                <tr><td colSpan={6} className="px-6 py-8 text-center">
+                  <p className="text-red-600 text-sm mb-3">Failed to load leave records.</p>
+                  <button onClick={fetchLeaves} className="btn-primary text-sm py-1.5 px-4">Retry</button>
                 </td></tr>
               ) : state.leaves.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-8 text-center text-ink-muted">No leave records found.</td></tr>

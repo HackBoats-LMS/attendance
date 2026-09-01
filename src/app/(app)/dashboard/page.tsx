@@ -6,6 +6,15 @@ import { getMe } from "@/features/auth/actions";
 import { getTodayAttendance } from "@/features/attendance/actions";
 import { getUserLeaves } from "@/features/leave/actions";
 
+type DashAttendance = {
+  id: string; date: string; takenAt: Date; matchConfidence: number;
+  checkOutAt: Date | null; checkOutConfidence: number | null; userId: string;
+};
+
+type DashLeave =
+  | { type: "single"; id: string; groupId: string | null; date: string; reason: string | null; status: string; appliedAt: Date }
+  | { type: "range"; groupId: string; startDate: string; endDate: string; days: number; reason: string | null; status: string; appliedAt: Date };
+
 export default async function DashboardPage() {
   const [userRes, attRes, leaveRes] = await Promise.all([
     getMe(),
@@ -18,15 +27,15 @@ export default async function DashboardPage() {
   }
 
   const user = userRes.user;
-  const attendance = "record" in attRes ? attRes.record as any : null;
-  const leaves = "leaves" in leaveRes ? leaveRes.leaves as any : [];
+  const attendance = ("record" in attRes ? attRes.record : null) as DashAttendance | null;
+  const leaves = ("leaves" in leaveRes ? leaveRes.leaves : []) as DashLeave[];
 
   const checkedIn = !!attendance;
   const checkedOut = !!attendance?.checkOutAt;
 
   const totalApplied = leaves.length;
-  const approvedCount = leaves.filter((l: any) => l.status === "approved").length;
-  const cancelledCount = leaves.filter((l: any) => l.status === "cancelled").length;
+  const approvedCount = leaves.filter((l) => l.status === "approved").length;
+  const cancelledCount = leaves.filter((l) => l.status === "cancelled").length;
 
   const recentLeaves = [...leaves]
     .sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime())
@@ -130,7 +139,7 @@ export default async function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             {recentLeaves.map((leave) => (
-              <div key={leave.id || leave.groupId} className="card relative">
+              <div key={leave.type === "single" ? leave.id : leave.groupId} className="card relative">
                 <div className="absolute top-4 right-4">
                   <StatusChip
                     label={leave.status.charAt(0).toUpperCase() + leave.status.slice(1)}

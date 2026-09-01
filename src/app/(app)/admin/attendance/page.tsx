@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useReducer, useCallback } from "react";
-import { getAdminAttendance } from "@/features/admin/actions";
+import { useEffect, useReducer, useCallback, useState } from "react";
+import { getAdminAttendance, purgePhotosAdmin } from "@/features/admin/actions";
 import StatusChip from "@/components/ui/StatusChip";
 
 const SHIFT_START = "09:00"; // 9:00 AM
@@ -38,16 +38,18 @@ type AttendanceRecord = {
   user: { name: string; jobRole: string };
 };
 
-type State = { date: string; records: AttendanceRecord[]; loading: boolean };
+type State = { date: string; records: AttendanceRecord[]; loading: boolean; fetchError: boolean };
 type Action =
   | { type: "SET_DATE"; date: string }
   | { type: "LOADED"; records: AttendanceRecord[] }
+  | { type: "ERROR" }
   | { type: "DONE" };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "SET_DATE": return { ...state, date: action.date, loading: true };
-    case "LOADED": return { ...state, records: action.records, loading: false };
+    case "SET_DATE": return { ...state, date: action.date, loading: true, fetchError: false };
+    case "LOADED": return { ...state, records: action.records, loading: false, fetchError: false };
+    case "ERROR": return { ...state, loading: false, fetchError: true };
     case "DONE": return { ...state, loading: false };
   }
 }
@@ -57,7 +59,10 @@ export default function AdminAttendancePage() {
     date: new Date().toLocaleDateString("en-CA"),
     records: [],
     loading: true,
+    fetchError: false,
   });
+  const [purgeLoading, setPurgeLoading] = useState(false);
+  const [purgeResult, setPurgeResult] = useState<string | null>(null);
 
   const fetchRecords = useCallback((targetDate: string) => {
     getAdminAttendance(targetDate)
@@ -65,7 +70,7 @@ export default function AdminAttendancePage() {
         if ("error" in d) throw new Error(d.error);
         dispatch({ type: "LOADED", records: d.records as AttendanceRecord[] });
       })
-      .catch(() => dispatch({ type: "DONE" }));
+      .catch(() => dispatch({ type: "ERROR" }));
   }, []);
 
   useEffect(() => { fetchRecords(state.date); }, [state.date, fetchRecords]);
@@ -107,18 +112,40 @@ export default function AdminAttendancePage() {
     document.body.removeChild(link);
   }, [state.records, state.date]);
 
+  const handlePurge = useCallback(async () => {
+    if (!confirm("Purge all attendance photos older than the retention period? This cannot be undone.")) return;
+    setPurgeLoading(true);
+    setPurgeResult(null);
+    try {
+      const res = await purgePhotosAdmin();
+      if (res.ok) setPurgeResult(`Purged ${res.deleted} photo(s) before ${new Date(res.cutoff).toLocaleDateString()}.`);
+      else setPurgeResult(`Error: ${res.error}`);
+    } catch { setPurgeResult("Network error during purge."); }
+    finally { setPurgeLoading(false); }
+  }, []);
+
   return (
     <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full z-10 relative">
+      {purgeResult && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm flex items-center justify-between">
+          <span>{purgeResult}</span>
+          <button onClick={() => setPurgeResult(null)} className="text-amber-500 hover:text-amber-700 ml-4 text-xs font-medium">Dismiss</button>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-heading font-bold text-ink tracking-tight">Attendance Review</h1>
           <p className="text-ink-muted mt-1">Review daily staff punch-ins and photos.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <label className="text-sm font-medium text-ink-muted">Select Date</label>
           <input type="date" value={state.date} onChange={(e) => handleDateChange(e.target.value)} className="form-input" />
           <button onClick={handleExportCSV} disabled={state.records.length === 0 || state.loading} className="btn-primary py-2 px-4 text-sm whitespace-nowrap">
             Export CSV
+          </button>
+          <button onClick={handlePurge} disabled={purgeLoading} className="py-2 px-4 text-sm rounded-lg border border-surface-border bg-surface hover:bg-bg text-ink-muted hover:text-ink transition-colors whitespace-nowrap">
+            {purgeLoading ? "Purging…" : "Purge Photos"}
           </button>
         </div>
       </div>
@@ -142,6 +169,11 @@ export default function AdminAttendancePage() {
               {state.loading ? (
                 <tr><td colSpan={7} className="px-6 py-12 text-center">
                   <div className="inline-block w-8 h-8 border-2 border-surface-border border-t-primary rounded-full animate-spin" />
+                </td></tr>
+              ) : state.fetchError ? (
+                <tr><td colSpan={7} className="px-6 py-8 text-center">
+                  <p className="text-red-600 text-sm mb-3">Failed to load attendance records.</p>
+                  <button onClick={() => fetchRecords(state.date)} className="btn-primary text-sm py-1.5 px-4">Retry</button>
                 </td></tr>
               ) : state.records.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-ink-muted">No attendance records for this date.</td></tr>

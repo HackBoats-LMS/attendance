@@ -19,7 +19,7 @@ model User {
   jobRole       String
   isOwner             Boolean      @default(false)
   isActive            Boolean      @default(true)
-  faceEmbedding       String?      // JSON array of floats stored as text in SQLite
+  faceEmbedding       String?      // JSON array of floats stored as text
   failedLoginAttempts Int          @default(0)
   lockedUntil         DateTime?
   createdAt           DateTime     @default(now())

@@ -14,8 +14,7 @@ export async function POST(request: Request) {
   try {
     const { deleted, cutoff } = await executePhotoPurge(RETENTION_DAYS);
     return NextResponse.json({ ok: true, deleted, cutoff });
-  } catch (error) {
-    console.error("Cron purge error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
