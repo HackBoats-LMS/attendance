@@ -4,8 +4,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type Human from "@vladmandic/human";
 import type { Config as HumanConfig } from "@vladmandic/human";
+import { computeEAR } from "@/lib/ear";
 
 import { enrollUserFace } from "../actions";
+
+const CAPTURE_INTERVAL_MS = 1000; // 1 second between each captured frame
+const REQUIRED_FRAMES = 10;       // capture 10 frames for a robust profile
+const LEFT_EYE  = [33, 160, 158, 133, 153, 144];
+const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
 
 const HUMAN_CONFIG: Partial<HumanConfig> = {
   modelBasePath: "/models",
@@ -13,7 +19,7 @@ const HUMAN_CONFIG: Partial<HumanConfig> = {
   face: {
     enabled: true,
     detector: { rotation: true, return: true },
-    mesh: { enabled: false },
+    mesh: { enabled: true }, // Required for blink (EAR) detection
     description: { enabled: true },
     iris: { enabled: false },
     emotion: { enabled: false },
@@ -26,7 +32,7 @@ const HUMAN_CONFIG: Partial<HumanConfig> = {
   gesture: { enabled: false },
 };
 
-type Status = "idle" | "loading" | "starting-camera" | "detecting" | "capturing" | "submitting" | "success" | "error";
+type Status = "idle" | "loading" | "starting-camera" | "blink-required" | "detecting" | "capturing" | "submitting" | "success" | "error";
 
 export default function EnrollmentCamera() {
   const router = useRouter();
@@ -39,9 +45,15 @@ export default function EnrollmentCamera() {
   const statusRef = useRef<Status>("idle");
   const unmountedRef = useRef(false);
 
+  // Blink detection state
+  const earHistoryRef = useRef<number[]>([]);
+  const hasBlinkedRef = useRef<boolean>(false);
+  const framesSinceStartRef = useRef<number>(0);
+
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("Initializing setup...");
   const [progress, setProgress] = useState(0);
+  const [blinkConfirmed, setBlinkConfirmed] = useState(false);
 
   const setStatusSynced = useCallback((s: Status) => {
     statusRef.current = s;
@@ -85,31 +97,86 @@ export default function EnrollmentCamera() {
         animFrameRef.current = requestAnimationFrame(loop);
         return;
       }
-      const now = performance.now();
-      if (now - lastCaptureRef.current >= 500) {
-        try {
-          const res = await humanRef.current.detect(videoRef.current);
-          const face = res.face?.[0];
-          if (face && face.embedding && face.boxScore > 0.7) {
+
+      // Skip first few frames while camera warms up
+      framesSinceStartRef.current++;
+      if (framesSinceStartRef.current < 10) {
+        animFrameRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      try {
+        const res = await humanRef.current.detect(videoRef.current);
+        const face = res.face?.[0];
+
+        if (face && face.embedding && face.mesh && face.boxScore > 0.7) {
+
+          // ── Blink detection (EAR) ──────────────────────────────────────
+          const leftEAR  = computeEAR(face.mesh as [number, number, number][], LEFT_EYE);
+          const rightEAR = computeEAR(face.mesh as [number, number, number][], RIGHT_EYE);
+          const avgEAR   = (leftEAR + rightEAR) / 2;
+
+          earHistoryRef.current.push(avgEAR);
+          if (earHistoryRef.current.length > 20) earHistoryRef.current.shift();
+
+          // Detect open→close→open blink pattern
+          if (!hasBlinkedRef.current && earHistoryRef.current.length >= 10) {
+            const history = earHistoryRef.current;
+            let state = 0;
+            for (const ear of history) {
+              if      (state === 0 && ear >= 0.28) state = 1; // baseline open
+              else if (state === 1 && ear <= 0.25) state = 2; // eye closed (blink dip)
+              else if (state === 2 && ear >= 0.28) { state = 3; break; } // re-opened
+            }
+            if (state === 3) {
+              hasBlinkedRef.current = true;
+              setBlinkConfirmed(true);
+            }
+          }
+          // ──────────────────────────────────────────────────────────────
+
+          // Only start capturing AFTER a blink has been detected
+          if (!hasBlinkedRef.current) {
+            if (statusRef.current !== "blink-required") setStatusSynced("blink-required");
+            setMessage("Please blink once to verify liveness...");
+            animFrameRef.current = requestAnimationFrame(loop);
+            return;
+          }
+
+          // Capture a frame every CAPTURE_INTERVAL_MS
+          const now = performance.now();
+          if (now - lastCaptureRef.current >= CAPTURE_INTERVAL_MS) {
             if (statusRef.current !== "capturing") setStatusSynced("capturing");
             embeddingsRef.current.push(face.embedding as number[]);
-            setProgress(Math.min((embeddingsRef.current.length / 3) * 100, 100));
+            const captured = embeddingsRef.current.length;
+            setProgress(Math.min((captured / REQUIRED_FRAMES) * 100, 100));
+            setMessage(`Capturing... (${captured}/${REQUIRED_FRAMES})`);
             lastCaptureRef.current = now;
-            if (embeddingsRef.current.length >= 3) {
+
+            if (captured >= REQUIRED_FRAMES) {
               if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
               await submitEnrollment();
               return;
-            } else {
-              setMessage(`Capturing... (${embeddingsRef.current.length}/3)`);
             }
           } else {
-            if (statusRef.current !== "detecting") setStatusSynced("detecting");
+            if (statusRef.current === "detecting") {
+              setMessage("Face detected. Hold still...");
+            }
+          }
+
+        } else {
+          // No face / low quality face
+          if (statusRef.current !== "detecting" && statusRef.current !== "blink-required") {
+            setStatusSynced("detecting");
+          }
+          if (statusRef.current === "detecting" || statusRef.current === "blink-required") {
             setMessage("Please face the camera clearly.");
           }
-        } catch {
-          // Ignore transient detection errors and keep looping
         }
+      } catch {
+        // Ignore transient detection errors and keep looping
       }
+
       animFrameRef.current = requestAnimationFrame(loop);
     };
     animFrameRef.current = requestAnimationFrame(loop);
@@ -143,6 +210,7 @@ export default function EnrollmentCamera() {
       }
       setStatusSynced("detecting");
       setMessage("Look directly at the camera...");
+      framesSinceStartRef.current = 0;
       detectLoop();
     } catch {
       setStatusSynced("error");
@@ -164,8 +232,7 @@ export default function EnrollmentCamera() {
     };
   }, [startCamera]);
 
-
-  const isActive = ["detecting", "capturing"].includes(status);
+  const isActive = ["blink-required", "detecting", "capturing"].includes(status);
 
   return (
     <div className="flex-1 flex flex-col items-center p-6 w-full max-w-2xl mx-auto z-10 relative">
@@ -190,6 +257,12 @@ export default function EnrollmentCamera() {
               <path d="M15,90 L10,90 L10,85" fill="none" stroke="white" strokeWidth="0.5" strokeOpacity="0.9" />
               <path d="M85,90 L90,90 L90,85" fill="none" stroke="white" strokeWidth="0.5" strokeOpacity="0.9" />
             </svg>
+
+            {/* Blink badge */}
+            <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${blinkConfirmed ? "bg-green-500/90 text-white" : "bg-white/80 text-ink-muted"}`}>
+              <span className={`w-2 h-2 rounded-full ${blinkConfirmed ? "bg-white" : "bg-amber-400 animate-pulse"}`} />
+              {blinkConfirmed ? "Liveness ✓" : "Blink required"}
+            </div>
           </div>
         )}
 
@@ -218,7 +291,11 @@ export default function EnrollmentCamera() {
               onClick={() => {
                 setStatusSynced("idle");
                 embeddingsRef.current = [];
+                earHistoryRef.current = [];
+                hasBlinkedRef.current = false;
+                framesSinceStartRef.current = 0;
                 setProgress(0);
+                setBlinkConfirmed(false);
                 startCamera();
               }}
             >
@@ -233,20 +310,21 @@ export default function EnrollmentCamera() {
           <p className="text-center font-medium text-ink mb-3 text-sm">{message}</p>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-green-600 rounded-full transition-all duration-300"
+              className="h-full bg-green-600 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-center text-xs text-ink-muted mt-2">{Math.round(progress / 100 * 3)}/3 frames captured</p>
+          <p className="text-center text-xs text-ink-muted mt-2">{embeddingsRef.current.length}/{REQUIRED_FRAMES} frames captured</p>
         </div>
       )}
 
       <div className="w-full card p-6">
         <h3 className="text-ink font-semibold mb-2">Instructions</h3>
-        <p className="text-sm text-ink-muted">
-          Please ensure you are in a well-lit environment and not wearing any face coverings like sunglasses.
-          The system will automatically capture 3 frames when your face is clearly visible.
-        </p>
+        <ol className="text-sm text-ink-muted space-y-1 list-decimal list-inside">
+          <li>Ensure you are in a well-lit environment with no face coverings.</li>
+          <li><strong className="text-ink">Blink once</strong> when prompted to verify you are a real person.</li>
+          <li>Hold still while the system captures {REQUIRED_FRAMES} frames over ~{REQUIRED_FRAMES} seconds.</li>
+        </ol>
       </div>
     </div>
   );
