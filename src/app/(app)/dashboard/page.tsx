@@ -28,6 +28,7 @@ export default async function DashboardPage() {
 
   const user = userRes.user;
   const attendance = ("record" in attRes ? attRes.record : null) as DashAttendance | null;
+  // Show only upcoming leaves on the dashboard summary
   const leaves = ("leaves" in leaveRes ? leaveRes.leaves : []) as DashLeave[];
 
   const checkedIn = !!attendance;

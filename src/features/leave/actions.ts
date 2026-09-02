@@ -95,48 +95,64 @@ export async function getUserLeaves() {
   const session = await getSessionUser();
   if (!session) return { error: "Unauthorized", status: 401 };
 
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD server-side
+
   const leaves = await prisma.leave.findMany({
     where: { userId: session.userId },
-    orderBy: { appliedAt: "desc" },
+    orderBy: { date: "asc" },
   });
 
-  // Group by groupId (single-day leaves have no groupId, treat as their own group)
-  const grouped: Record<string, typeof leaves> = {};
-  for (const leave of leaves) {
-    const key = leave.groupId ?? leave.id;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(leave);
+  // Split into upcoming (date >= today) and past (date < today)
+  const upcomingRaw = leaves.filter((l) => l.date >= today);
+  const pastRaw     = leaves.filter((l) => l.date <  today);
+
+  function groupLeaves(records: typeof leaves) {
+    const grouped: Record<string, typeof leaves> = {};
+    for (const leave of records) {
+      const key = leave.groupId ?? leave.id;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(leave);
+    }
+    return Object.values(grouped).map((group) => {
+      if (group.length === 1) {
+        return {
+          type: "single" as const,
+          id: group[0].id,
+          groupId: group[0].groupId,
+          date: group[0].date,
+          reason: group[0].reason,
+          status: group[0].status,
+          appliedAt: group[0].appliedAt,
+        };
+      }
+      const sorted = group.sort((a, b) => a.date.localeCompare(b.date));
+      return {
+        type: "range" as const,
+        groupId: sorted[0].groupId,
+        startDate: sorted[0].date,
+        endDate: sorted[sorted.length - 1].date,
+        days: sorted.length,
+        reason: sorted[0].reason,
+        status: sorted[0].status,
+        appliedAt: sorted[0].appliedAt,
+      };
+    // Sort upcoming ascending (soonest first), past descending (most recent first)
+    });
   }
 
-  // Build grouped response
-  const result = Object.values(grouped).map((group) => {
-    if (group.length === 1) {
-      // Single-day leave (groupId may still be set — applyForLeave always sets it)
-      return {
-        type: "single" as const,
-        id: group[0].id,
-        groupId: group[0].groupId,
-        date: group[0].date,
-        reason: group[0].reason,
-        status: group[0].status,
-        appliedAt: group[0].appliedAt,
-      };
-    }
-    // Multi-day leave
-    const sorted = group.sort((a, b) => a.date.localeCompare(b.date));
-    return {
-      type: "range" as const,
-      groupId: sorted[0].groupId,
-      startDate: sorted[0].date,
-      endDate: sorted[sorted.length - 1].date,
-      days: sorted.length,
-      reason: sorted[0].reason,
-      status: sorted[0].status,
-      appliedAt: sorted[0].appliedAt,
-    };
+  const upcoming = groupLeaves(upcomingRaw).sort((a, b) => {
+    const aDate = a.type === "single" ? a.date : a.startDate;
+    const bDate = b.type === "single" ? b.date : b.startDate;
+    return aDate.localeCompare(bDate);
   });
 
-  return { leaves: result };
+  const past = groupLeaves(pastRaw).sort((a, b) => {
+    const aDate = a.type === "single" ? a.date : a.startDate;
+    const bDate = b.type === "single" ? b.date : b.startDate;
+    return bDate.localeCompare(aDate); // newest first
+  });
+
+  return { leaves: upcoming, pastLeaves: past };
 }
 
 export async function checkLeaveConflicts(payload: { startDate?: string; endDate?: string; date?: string }) {

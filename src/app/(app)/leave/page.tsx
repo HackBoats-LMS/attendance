@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useReducer, useCallback, FormEvent } from "react";
+import { useEffect, useReducer, useCallback, useState, FormEvent } from "react";
 import StatusChip, { getLeaveChipVariant } from "@/components/ui/StatusChip";
 import { applyForLeave, getUserLeaves, checkLeaveConflicts, cancelLeaveGroup, cancelLeaveSingle } from "@/features/leave/actions";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 type DayResult = { date: string; available: boolean; occupiedBy: string | null };
 
-type SingleLeave = { type: "single"; id: string; date: string; reason: string | null; status: string; appliedAt: Date };
-type RangeLeave = { type: "range"; groupId: string; startDate: string; endDate: string; days: number; reason: string | null; status: string; appliedAt: Date };
-type LeaveEntry = SingleLeave | RangeLeave;
+type SingleLeave = { type: "single"; id: string; groupId?: string | null; date: string; reason: string | null; status: string; appliedAt: Date };
+type RangeLeave  = { type: "range";  groupId: string; startDate: string; endDate: string; days: number; reason: string | null; status: string; appliedAt: Date };
+type LeaveEntry  = SingleLeave | RangeLeave;
 
 type State = {
   startDate: string;
@@ -20,6 +21,7 @@ type State = {
   error: string;
   success: string;
   leaves: LeaveEntry[];
+  pastLeaves: LeaveEntry[];
   fetchingLeaves: boolean;
 };
 
@@ -30,7 +32,7 @@ type Action =
   | { type: "SUBMIT_START" }
   | { type: "SUBMIT_OK"; message: string }
   | { type: "SUBMIT_ERR"; message: string }
-  | { type: "LEAVES_LOADED"; leaves: LeaveEntry[] }
+  | { type: "LEAVES_LOADED"; leaves: LeaveEntry[]; pastLeaves: LeaveEntry[] }
   | { type: "LEAVES_FETCH_DONE" }
   | { type: "CLEAR_MESSAGES" };
 
@@ -38,7 +40,7 @@ const initialState: State = {
   startDate: "", endDate: "", reason: "",
   availability: null, checking: false, loading: false,
   error: "", success: "",
-  leaves: [], fetchingLeaves: true,
+  leaves: [], pastLeaves: [], fetchingLeaves: true,
 };
 
 function reducer(state: State, action: Action): State {
@@ -56,7 +58,7 @@ function reducer(state: State, action: Action): State {
     case "SUBMIT_ERR":
       return { ...state, loading: false, error: action.message };
     case "LEAVES_LOADED":
-      return { ...state, leaves: action.leaves, fetchingLeaves: false };
+      return { ...state, leaves: action.leaves, pastLeaves: action.pastLeaves, fetchingLeaves: false };
     case "LEAVES_FETCH_DONE":
       return { ...state, fetchingLeaves: false };
     case "CLEAR_MESSAGES":
@@ -64,14 +66,55 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+function formatDate(date: string) {
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function LeaveCard({ entry, onCancelSingle, onCancelGroup, dimmed }: {
+  entry: LeaveEntry;
+  onCancelSingle?: (id: string) => void;
+  onCancelGroup?: (groupId: string) => void;
+  dimmed?: boolean;
+}) {
+  return (
+    <div className={`card flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-opacity ${dimmed ? "opacity-60" : ""}`}>
+      <div>
+        <div className="font-heading font-semibold text-ink">
+          {entry.type === "single"
+            ? formatDate(entry.date)
+            : `${formatDate(entry.startDate)} → ${formatDate(entry.endDate)}`}
+        </div>
+        {entry.type === "range" && <div className="text-xs text-ink-muted mt-0.5 font-mono">{entry.days} days</div>}
+        {entry.reason && <div className="text-sm text-ink-muted mt-1 line-clamp-2">{entry.reason}</div>}
+      </div>
+      <div className="flex items-center gap-4 justify-between sm:justify-end shrink-0">
+        <StatusChip
+          label={entry.status === "cancelled" ? "Cancelled" : entry.status === "pending" ? "Pending" : "Approved"}
+          variant={getLeaveChipVariant(entry.status)}
+        />
+        {entry.status === "pending" && !dimmed && (
+          <button
+            onClick={() => entry.type === "single"
+              ? onCancelSingle?.(entry.id)
+              : onCancelGroup?.(entry.groupId!)}
+            className="text-red-600 hover:text-red-500 text-sm font-medium transition-colors p-1"
+            title="Cancel Leave"
+          >Cancel</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function LeavePage() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [showPast, setShowPast] = useState(false);
 
   const fetchLeaves = useCallback(() => {
     getUserLeaves()
       .then((d) => {
         if ("error" in d) throw new Error(d.error);
-        dispatch({ type: "LEAVES_LOADED", leaves: d.leaves as LeaveEntry[] });
+        dispatch({ type: "LEAVES_LOADED", leaves: d.leaves as LeaveEntry[], pastLeaves: d.pastLeaves as LeaveEntry[] });
       })
       .catch(() => dispatch({ type: "LEAVES_FETCH_DONE" }));
   }, []);
@@ -137,6 +180,7 @@ export default function LeavePage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* ── Apply Form ── */}
         <div>
           <div className="card">
             <h2 className="text-lg font-heading font-semibold text-ink mb-4">Apply for Leave</h2>
@@ -208,38 +252,51 @@ export default function LeavePage() {
           </div>
         </div>
 
+        {/* ── Leave History ── */}
         <div>
-          <h2 className="text-lg font-heading font-semibold text-ink mb-4">My Leave History</h2>
+          <h2 className="text-lg font-heading font-semibold text-ink mb-4">Upcoming Leaves</h2>
           <div className="flex flex-col gap-3">
             {state.fetchingLeaves ? (
               <div className="card flex justify-center">
                 <div className="w-6 h-6 border-2 border-gray-200 border-t-primary rounded-full animate-spin" />
               </div>
             ) : state.leaves.length === 0 ? (
-              <div className="card text-center text-ink-muted text-sm">No leave records found.</div>
+              <div className="card text-center text-ink-muted text-sm py-6">No upcoming leaves.</div>
             ) : (
               state.leaves.map((entry) => (
-                <div key={entry.type === "single" ? entry.id : entry.groupId} className="card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <div className="font-heading font-semibold text-ink">
-                      {entry.type === "single" ? entry.date : `${entry.startDate} → ${entry.endDate}`}
-                    </div>
-                    {entry.type === "range" && <div className="text-xs text-ink-muted mt-0.5 font-mono">{entry.days} days</div>}
-                    {entry.reason && <div className="text-sm text-ink-muted mt-1 line-clamp-2">{entry.reason}</div>}
-                  </div>
-                  <div className="flex items-center gap-4 justify-between sm:justify-end shrink-0">
-                    <StatusChip label={entry.status === "cancelled" ? "Cancelled" : entry.status === "pending" ? "Pending" : "Approved"} variant={getLeaveChipVariant(entry.status)} />
-                    {entry.status === "pending" && (
-                      <button
-                        onClick={() => entry.type === "single" ? handleCancelSingle(entry.id) : handleCancelGroup(entry.groupId!)}
-                        className="text-red-600 hover:text-red-500 text-sm font-medium transition-colors p-1"
-                        title="Cancel Leave">Cancel</button>
-                    )}
-                  </div>
-                </div>
+                <LeaveCard
+                  key={entry.type === "single" ? entry.id : entry.groupId}
+                  entry={entry}
+                  onCancelSingle={handleCancelSingle}
+                  onCancelGroup={handleCancelGroup}
+                />
               ))
             )}
           </div>
+
+          {/* ── Past Leaves (collapsible) ── */}
+          {!state.fetchingLeaves && state.pastLeaves.length > 0 && (
+            <div className="mt-6">
+              <button
+                onClick={() => setShowPast((v) => !v)}
+                className="flex items-center gap-2 text-sm font-medium text-ink-muted hover:text-ink transition-colors mb-3 w-full"
+              >
+                <ChevronDownIcon className={`w-4 h-4 transition-transform ${showPast ? "rotate-180" : ""}`} />
+                Past Leaves ({state.pastLeaves.length})
+              </button>
+              {showPast && (
+                <div className="flex flex-col gap-3">
+                  {state.pastLeaves.map((entry) => (
+                    <LeaveCard
+                      key={entry.type === "single" ? entry.id : entry.groupId}
+                      entry={entry}
+                      dimmed
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
