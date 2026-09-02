@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   HomeIcon,
   CameraIcon,
@@ -10,6 +11,7 @@ import {
   UsersIcon,
   ClipboardDocumentCheckIcon,
   CalendarDaysIcon,
+  ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import {
   HomeIcon as HomeIconSolid,
@@ -20,9 +22,11 @@ import {
   ClipboardDocumentCheckIcon as ClipboardDocumentCheckIconSolid,
   CalendarDaysIcon as CalendarDaysIconSolid,
 } from "@heroicons/react/24/solid";
+import { logoutUser } from "@/features/auth/actions";
+
 const staffItems = [
   { href: "/dashboard", label: "Home", icon: HomeIcon, iconSolid: HomeIconSolid },
-  { href: "/attendance", label: "Clock In", icon: CameraIcon, iconSolid: CameraIconSolid },
+  { href: "/attendance", label: "Check In", icon: CameraIcon, iconSolid: CameraIconSolid },
   { href: "/leave", label: "Leave", icon: CalendarIcon, iconSolid: CalendarIconSolid },
   { href: "/enroll", label: "Profile", icon: UserCircleIcon, iconSolid: UserCircleIconSolid },
 ];
@@ -36,14 +40,23 @@ const adminItems = [
 
 export default function Navigation({ initialUser }: { initialUser: { name: string; jobRole: string; isOwner: boolean; hasFaceEmbedding?: boolean } }) {
   const pathname = usePathname();
+  const router = useRouter();
   const user = initialUser;
-  const items = user?.isOwner 
-    ? adminItems 
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const items = user?.isOwner
+    ? adminItems
     : staffItems.filter(item => {
         if (item.href === "/enroll" && user?.hasFaceEmbedding) return false;
         if (item.href === "/attendance" && !user?.hasFaceEmbedding) return false;
         return true;
       });
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await logoutUser();
+    router.push("/login");
+  };
 
   return (
     <>
@@ -67,7 +80,7 @@ export default function Navigation({ initialUser }: { initialUser: { name: strin
 
         {user && (
           <div className="p-4 border-t border-surface-border">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-bg">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-bg mb-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
                 {user.name.charAt(0)}
               </div>
@@ -76,17 +89,40 @@ export default function Navigation({ initialUser }: { initialUser: { name: strin
                 <div className="text-xs text-ink-muted truncate">{user.jobRole}</div>
               </div>
             </div>
+            <button
+              id="btn-logout-desktop"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium text-ink-muted hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              <ArrowRightStartOnRectangleIcon className="w-5 h-5 flex-shrink-0" />
+              {loggingOut ? "Signing out…" : "Sign Out"}
+            </button>
           </div>
         )}
       </nav>
 
       {/* Mobile floating pill nav */}
-      <nav className="md:hidden fixed bottom-4 left-4 right-4 bg-surface rounded-full z-30 px-2 py-2"
-        style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)" }}>
+      <nav
+        className="md:hidden fixed bottom-4 left-4 right-4 bg-surface rounded-full z-30 px-2 py-2"
+        style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)" }}
+      >
         <div className="flex items-center justify-around">
           {items.map((item) => (
             <BottomNavItem key={item.href} {...item} current={pathname} />
           ))}
+          {/* Logout button in mobile nav */}
+          <button
+            id="btn-logout-mobile"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex flex-col items-center justify-center gap-0.5 w-16 py-1 disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-ink-muted hover:text-red-600 hover:bg-red-50 transition-colors">
+              <ArrowRightStartOnRectangleIcon className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-medium text-ink-muted">Sign Out</span>
+          </button>
         </div>
       </nav>
     </>

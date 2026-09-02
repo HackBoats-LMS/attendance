@@ -74,14 +74,14 @@ export default async function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-6">
               <div>
-                <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Clock In</p>
+                <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Check In</p>
                 <p className="text-lg font-bold text-ink tabular-nums">
                   {checkedIn ? new Date(attendance.takenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—"}
                 </p>
               </div>
               <div className="w-px h-8 bg-surface-border" />
               <div>
-                <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Clock Out</p>
+                <p className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-1">Check Out</p>
                 <p className="text-lg font-bold text-ink tabular-nums">
                   {checkedOut && attendance?.checkOutAt ? new Date(attendance.checkOutAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—"}
                 </p>
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
                 </Link>
               ) : (
                 <Link href="/attendance" className="btn-primary inline-block text-sm">
-                  Clock In Now
+                  Check In Now
                 </Link>
               )}
             </div>

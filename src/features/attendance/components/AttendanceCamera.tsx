@@ -343,7 +343,7 @@ export default function AttendanceCamera() {
               className="flex-1 py-2.5 rounded-full text-sm font-medium transition-all bg-chip-gray text-chip-gray-text cursor-not-allowed"
               disabled
             >
-              Clock In (done)
+              Check In (done)
             </button>
             <button
               onClick={() => handleModeSwitch("check-out")}
