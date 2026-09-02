@@ -304,3 +304,37 @@ export async function resetUserFaceEmbedding(id: string) {
   await prisma.user.update({ where: { id }, data: { faceEmbedding: null } });
   return { ok: true };
 }
+
+export async function deleteUser(payload: { id: string; adminPassword: string }) {
+  const session = await getSessionUser();
+  if (!session || !session.isOwner) return { error: "Forbidden", status: 403 };
+
+  if (payload.id === session.userId) {
+    return { error: "Cannot delete your own account", status: 400 };
+  }
+
+  const admin = await prisma.user.findUnique({ where: { id: session.userId } });
+  if (!admin) return { error: "Admin not found", status: 404 };
+
+  const { verifyPassword } = await import("@/lib/auth");
+  const valid = await verifyPassword(payload.adminPassword, admin.passwordHash);
+  if (!valid) {
+    return { error: "Incorrect admin password", status: 401 };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.id } });
+  if (!user) return { error: "User not found", status: 404 };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Delete all related records first to satisfy foreign key constraints
+      await tx.attendance.deleteMany({ where: { userId: payload.id } });
+      await tx.leave.deleteMany({ where: { userId: payload.id } });
+      // Delete the user
+      await tx.user.delete({ where: { id: payload.id } });
+    });
+    return { ok: true };
+  } catch {
+    return { error: "Failed to delete user", status: 500 };
+  }
+}

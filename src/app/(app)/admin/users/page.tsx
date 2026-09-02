@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
-import { getUsers, createUser, deactivateUser, reactivateUser, resetUserFaceEmbedding } from "@/features/admin/actions";
+import { getUsers, createUser, deactivateUser, reactivateUser, resetUserFaceEmbedding, deleteUser } from "@/features/admin/actions";
 
 type User = {
   id: string;
@@ -22,6 +22,12 @@ export default function AdminUsersPage() {
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  
+  // Delete user state
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -83,6 +89,27 @@ export default function AdminUsersPage() {
       if (res.ok) fetchUsers();
       else setActionError(res.error ?? "Failed to reset face enrollment");
     } catch { setActionError("Network error. Please try again."); }
+  };
+
+  const handleDelete = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const res = await deleteUser({ id: deleteTarget.id, adminPassword });
+      if (res.ok) {
+        setDeleteTarget(null);
+        setAdminPassword("");
+        fetchUsers();
+      } else {
+        setDeleteError(res.error ?? "Failed to delete user");
+      }
+    } catch {
+      setDeleteError("Network error. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -165,6 +192,10 @@ export default function AdminUsersPage() {
                           <button onClick={() => handleReactivate(u.id, u.name)}
                             className="text-green-600 hover:text-green-700 text-sm font-medium transition-colors">Reactivate</button>
                         )}
+                        {!u.isOwner && (
+                          <button onClick={() => { setDeleteTarget(u); setAdminPassword(""); setDeleteError(""); }}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors font-bold ml-2">Delete</button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -192,6 +223,31 @@ export default function AdminUsersPage() {
               <div className="flex gap-3 justify-end mt-4">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-bg transition-colors">Cancel</button>
                 <button type="submit" disabled={formLoading} className="btn-primary">{formLoading ? "Creating..." : "Create Account"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="card w-full max-w-md p-6 border-red-200">
+            <h2 className="text-xl font-heading font-bold text-red-600 mb-2">Delete User</h2>
+            <p className="text-sm text-ink-muted mb-6">
+              You are about to permanently delete <strong>{deleteTarget.name}</strong>. This action will also delete all their attendance records and leave history. This cannot be undone.
+            </p>
+            <form onSubmit={handleDelete} className="flex flex-col gap-4">
+              {deleteError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{deleteError}</div>}
+              <div>
+                <label className="form-label text-red-600">Admin Password Required</label>
+                <input required type="password" className="form-input focus:ring-red-500/30 focus:border-red-500" 
+                  value={adminPassword} onChange={e => setAdminPassword(e.target.value)} placeholder="Enter your admin password to confirm" />
+              </div>
+              <div className="flex gap-3 justify-end mt-4">
+                <button type="button" onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={deleteLoading} className="bg-red-600 text-white font-semibold py-2 px-5 rounded-lg transition-all hover:bg-red-700 disabled:opacity-50">
+                  {deleteLoading ? "Deleting..." : "Permanently Delete"}
+                </button>
               </div>
             </form>
           </div>
