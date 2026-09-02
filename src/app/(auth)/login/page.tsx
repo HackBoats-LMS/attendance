@@ -31,7 +31,6 @@ export default function LoginPage() {
 
       if (res.ok) {
         router.push("/dashboard");
-        router.refresh();
       } else {
         setError(res.error ?? "Login failed");
         if (res.status === 423) {
